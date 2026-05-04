@@ -6,6 +6,8 @@
     <title>IR Remote Control</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/timepicker-ui@4.3.0/dist/css/index.css">
+    <script src="https://cdn.jsdelivr.net/npm/timepicker-ui@4.3.0/dist/index.umd.js"></script>
     <style>
         [x-cloak] { display: none !important; }
     </style>
@@ -141,9 +143,28 @@
                                 class="text-blue-600 text-sm font-bold w-full py-2 border-2 border-dashed border-blue-200 rounded hover:bg-blue-50 transition">+ Add Step</button>
                     </div>
 
-                    <div class="space-y-1">
+                    <div class="space-y-1" x-data="{ picker: null }" x-init="
+                        picker = new window.TimepickerUI($refs.timeInput, {
+                            clock: { type: '24h' },
+                            callbacks: {
+                                onConfirm: (data) => {
+                                    const h = String(data.hour).padStart(2, '0');
+                                    const m = String(data.minutes).padStart(2, '0');
+                                    newTimer.time = `${h}:${m}`;
+                                }
+                            }
+                        });
+                        picker.create();
+                        $watch('newTimer.time', value => {
+                            $refs.timeInput.value = value;
+                        });
+                        $watch('editingTimerId', () => {
+                            // Sync the value manually when switching timers
+                            setTimeout(() => { $refs.timeInput.value = newTimer.time; }, 0);
+                        });
+                    ">
                         <label class="text-sm font-semibold">Execution Time (Daily):</label>
-                        <input type="time" x-model="newTimer.time" class="w-full border p-2 rounded text-lg font-mono">
+                        <input x-ref="timeInput" type="text" :value="newTimer.time" readonly class="w-full border p-2 rounded text-lg font-mono bg-white cursor-pointer" placeholder="Select time">
                     </div>
 
                     <div class="flex space-x-2">

@@ -137,7 +137,7 @@
                                 </div>
                             </div>
                         </template>
-                        <button @click="newTimer.steps.push({command_name: '', repeats: 1, interval_ms: 0})" 
+                        <button @click="newTimer.steps.push({command_name: '', repeats: 1, interval_ms: 100})" 
                                 class="text-blue-600 text-sm font-bold w-full py-2 border-2 border-dashed border-blue-200 rounded hover:bg-blue-50 transition">+ Add Step</button>
                     </div>
 
@@ -155,18 +155,22 @@
 
             <div class="space-y-4">
                 <template x-for="timer in config.timers" :key="timer.id">
-                    <div class="bg-white p-4 rounded shadow border-l-4 border-blue-500">
+                    <div class="bg-white p-4 rounded shadow border-l-4" :class="timer.enabled ? 'border-blue-500' : 'border-gray-300 opacity-60'">
                         <div class="flex justify-between items-start mb-2">
                             <div>
-                                <h4 class="font-bold text-lg" x-text="timer.name"></h4>
-                                <div class="flex items-center text-blue-600 font-bold">
+                                <h4 class="font-bold text-lg" :class="timer.enabled ? 'text-gray-800' : 'text-gray-400'" x-text="timer.name"></h4>
+                                <div class="flex items-center font-bold" :class="timer.enabled ? 'text-blue-600' : 'text-gray-400'">
                                     <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                     <span x-text="timer.time"></span>
-                                    <span class="ml-2 text-[10px] bg-blue-100 px-1 rounded uppercase">Daily</span>
+                                    <span class="ml-2 text-[10px] px-1 rounded uppercase" :class="timer.enabled ? 'bg-blue-100' : 'bg-gray-100'">Daily</span>
                                 </div>
                             </div>
                             <div class="flex flex-col space-y-2 text-right">
-                                <div class="flex space-x-2 justify-end">
+                                <div class="flex space-x-2 justify-end items-center">
+                                    <button @click="toggleTimer(timer)" 
+                                            class="px-2 py-0.5 rounded text-[10px] font-bold uppercase transition"
+                                            :class="timer.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'"
+                                            x-text="timer.enabled ? 'Enabled' : 'Disabled'"></button>
                                     <button @click="editTimer(timer)" class="text-blue-500 hover:text-blue-700 text-xs font-bold uppercase">Edit</button>
                                     <button @click="deleteTimer(timer.id)" class="text-red-500 hover:text-red-700 text-xs font-bold uppercase">Delete</button>
                                 </div>
@@ -229,7 +233,7 @@
                 newName: '',
                 newChannel: 1,
                 editingTimerId: null,
-                newTimer: { name: '', steps: [{command_name: '', repeats: 1, interval_ms: 0}], time: '07:00' },
+                newTimer: { name: '', steps: [{command_name: '', repeats: 1, interval_ms: 100}], time: '07:00', enabled: true },
                 notification: { show: false, message: '', type: 'success' },
 
                 async fetchConfig() {
@@ -336,6 +340,7 @@
                     this.newTimer = {
                         name: timer.name,
                         time: timer.time,
+                        enabled: timer.enabled,
                         steps: JSON.parse(JSON.stringify(timer.steps))
                     };
                     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -343,7 +348,21 @@
 
                 cancelEdit() {
                     this.editingTimerId = null;
-                    this.newTimer = { name: '', steps: [{command_name: '', repeats: 1, interval_ms: 100}], time: '07:00' };
+                    this.newTimer = { name: '', steps: [{command_name: '', repeats: 1, interval_ms: 100}], time: '07:00', enabled: true };
+                },
+
+                async toggleTimer(timer) {
+                    const updated = JSON.parse(JSON.stringify(timer));
+                    updated.enabled = !updated.enabled;
+                    const res = await fetch(`/api/timers/${timer.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updated)
+                    });
+                    if (res.ok) {
+                        this.notify(updated.enabled ? 'Timer enabled' : 'Timer disabled');
+                        this.fetchConfig();
+                    }
                 },
 
                 async deleteTimer(id) {

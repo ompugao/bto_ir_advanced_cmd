@@ -36,6 +36,7 @@ class Timer(BaseModel):
     name: str = "New Timer"
     steps: List[TimerStep]
     time: str  # Format: "HH:MM"
+    enabled: bool = True
 
 class Config(BaseModel):
     commands: Dict[str, IRCommand] = {}
@@ -80,7 +81,7 @@ def execute_ir_command_sequence(timer_id: str):
             try:
                 logger.info(f"Step: {step.command_name} (Ch{cmd_obj.channel}) (Repeat {i+1}/{step.repeats})")
                 # This call is synchronous and waits for the subprocess to exit
-                logger.info(controller.send_raw_data(cmd_obj.raw_data))
+                controller.send_raw_data(cmd_obj.raw_data)
                 if i < step.repeats - 1:
                     time.sleep(step.interval_ms / 1000.0)
             except Exception as e:
@@ -92,6 +93,9 @@ def sync_scheduler():
     scheduler.remove_all_jobs()
     config = load_config()
     for timer in config.timers:
+        if not timer.enabled:
+            logger.info(f"Skipping disabled timer {timer.id} ({timer.name})")
+            continue
         try:
             # Convert HH:MM to cron: "MM HH * * *"
             hour, minute = timer.time.split(":")

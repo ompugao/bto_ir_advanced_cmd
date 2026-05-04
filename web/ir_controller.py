@@ -12,10 +12,10 @@ class IRController:
     def _run_command(self, args):
         with self.lock:
             cmd = [self.binary_path] + args
-            logger.info(f"Running command: {' '.join(cmd)}")
+            logger.debug(f"Running command: {' '.join(cmd)}")
             try:
                 result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-                logger.info(result.stderr.strip())
+                logger.debug(result.stderr.strip())
                 return result.stdout.strip()
             except subprocess.CalledProcessError as e:
                 logger.error(f"Command failed with exit code {e.returncode}")

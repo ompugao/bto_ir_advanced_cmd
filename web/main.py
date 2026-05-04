@@ -12,7 +12,10 @@ from apscheduler.triggers.cron import CronTrigger
 from web.ir_controller import IRController
 
 # Setup logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="IR Remote Controller")

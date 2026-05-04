@@ -154,7 +154,7 @@
             </div>
 
             <div class="space-y-4">
-                <template x-for="timer in config.timers" :key="timer.id">
+                <template x-for="timer in sortedTimers" :key="timer.id">
                     <div class="bg-white p-4 rounded shadow border-l-4" :class="timer.enabled ? 'border-blue-500' : 'border-gray-300 opacity-60'">
                         <div class="flex justify-between items-start mb-2">
                             <div>
@@ -235,6 +235,10 @@
                 editingTimerId: null,
                 newTimer: { name: '', steps: [{command_name: '', repeats: 1, interval_ms: 100}], time: '07:00', enabled: true },
                 notification: { show: false, message: '', type: 'success' },
+
+                get sortedTimers() {
+                    return [...this.config.timers].sort((a, b) => a.time.localeCompare(b.time));
+                },
 
                 async fetchConfig() {
                     const res = await fetch('/api/config');

@@ -29,7 +29,7 @@ class IRCommand(BaseModel):
 class TimerStep(BaseModel):
     command_name: str
     repeats: int = 1
-    interval_ms: int = 0
+    interval_ms: int = 100
 
 class Timer(BaseModel):
     id: Optional[str] = None

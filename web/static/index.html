@@ -343,7 +343,7 @@
 
                 cancelEdit() {
                     this.editingTimerId = null;
-                    this.newTimer = { name: '', steps: [{command_name: '', repeats: 1, interval_ms: 0}], time: '07:00' };
+                    this.newTimer = { name: '', steps: [{command_name: '', repeats: 1, interval_ms: 100}], time: '07:00' };
                 },
 
                 async deleteTimer(id) {

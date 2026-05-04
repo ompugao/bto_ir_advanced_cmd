@@ -1,0 +1,12 @@
+services:
+  ir-remote-hub:
+    build: .
+    container_name: ir-remote-hub
+    privileged: true
+    environment:
+      - TZ=Asia/Tokyo
+    volumes:
+      - ./web/config.json:/app/web/config.json
+    ports:
+      - "8000:8000"
+    restart: unless-stopped

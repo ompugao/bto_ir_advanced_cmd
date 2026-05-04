@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IR Remote Control</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen pb-12" x-data="remoteApp()" x-init="fetchConfig()">
+    <nav class="bg-blue-600 text-white p-4 shadow-md mb-6">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-bold">IR Remote Hub</h1>
+            <div class="space-x-4 text-sm">
+                <button @click="activeTab = 'dashboard'" :class="activeTab === 'dashboard' ? 'underline font-bold' : ''">Dashboard</button>
+                <button @click="activeTab = 'record'" :class="activeTab === 'record' ? 'underline font-bold' : ''">Record</button>
+                <button @click="activeTab = 'timers'" :class="activeTab === 'timers' ? 'underline font-bold' : ''">Timers</button>
+                <button @click="activeTab = 'settings'" :class="activeTab === 'settings' ? 'underline font-bold' : ''">Settings</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto px-4 max-w-2xl">
+        <!-- Dashboard -->
+        <div x-show="activeTab === 'dashboard'" x-cloak>
+            <h2 class="text-2xl font-semibold mb-4">Quick Control</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <template x-for="(cmd, name) in config.commands" :key="name">
+                    <div class="bg-white p-4 rounded shadow flex justify-between items-center border-t-4"
+                         :class="{'border-blue-400': cmd.channel == 1, 'border-purple-400': cmd.channel == 2, 'border-orange-400': cmd.channel == 3}">
+                        <div class="flex flex-col">
+                            <span class="font-bold text-gray-800" x-text="name"></span>
+                            <span class="text-[10px] uppercase font-bold text-gray-400" x-text="'CH' + cmd.channel + (config.mappings[cmd.channel] ? ': ' + config.mappings[cmd.channel] : '')"></span>
+                        </div>
+                        <div class="space-x-2">
+                            <button @click="sendCommand(name)" class="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 transition">Send</button>
+                            <button @click="deleteCommand(name)" class="bg-red-100 text-red-600 px-2 py-1 rounded hover:bg-red-200">×</button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+            <div x-show="Object.keys(config.commands).length === 0" class="text-gray-500 text-center py-8">
+                No commands registered. Go to "Record" to add some.
+            </div>
+        </div>
+
+        <!-- Record -->
+        <div x-show="activeTab === 'record'" x-cloak class="bg-white p-6 rounded shadow">
+            <h2 class="text-2xl font-semibold mb-4 text-blue-600">Record IR Command</h2>
+            <div class="space-y-6">
+                <!-- Step 1 -->
+                <div class="flex items-center space-x-4">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold"
+                         :class="recordingStep >= 1 ? 'bg-blue-500' : 'bg-gray-300'">1</div>
+                    <button @click="startRecording()" :disabled="recordingStatus === 'recording'"
+                            class="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50 flex-1 font-bold">Start Recording</button>
+                </div>
+                
+                <div class="flex items-center space-x-4 bg-red-50 p-4 rounded border border-red-100" x-show="recordingStatus === 'recording'">
+                    <div class="animate-pulse bg-red-500 w-3 h-3 rounded-full"></div>
+                    <span class="text-red-600 font-bold uppercase text-xs tracking-wider">Ready. Press your remote button now.</span>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="flex items-center space-x-4">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold"
+                         :class="recordingStep >= 2 ? 'bg-blue-500' : 'bg-gray-300'">2</div>
+                    <button @click="stopRecording()" :disabled="recordingStatus !== 'recording'"
+                            class="bg-red-600 text-white px-4 py-2 rounded disabled:opacity-50 flex-1 font-bold">Stop Recording</button>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="flex items-center space-x-4" x-show="recordedData">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold bg-green-500">3</div>
+                    <div class="flex-1 space-y-4 bg-gray-50 p-4 rounded border">
+                        <div>
+                            <label class="text-[10px] uppercase font-bold text-gray-400">Command Name</label>
+                            <input type="text" x-model="newName" placeholder="e.g. LIGHT_ON" class="w-full border p-2 rounded bg-white">
+                        </div>
+                        <div>
+                            <label class="text-[10px] uppercase font-bold text-gray-400">Target Channel</label>
+                            <div class="grid grid-cols-3 gap-2">
+                                <template x-for="ch in [1,2,3]">
+                                    <button @click="newChannel = ch" 
+                                            class="border p-2 rounded font-bold text-sm transition"
+                                            :class="newChannel == ch ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 hover:bg-gray-100'"
+                                            x-text="'CH' + ch"></button>
+                                </template>
+                            </div>
+                            <p class="text-[10px] mt-1 text-gray-500" x-text="config.mappings[newChannel] ? 'Mapped to: ' + config.mappings[newChannel] : 'No mapping'"></p>
+                        </div>
+                        <button @click="saveCommand()" class="bg-green-600 text-white px-4 py-3 rounded w-full font-bold shadow hover:bg-green-700">Register Command</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Timers -->
+        <div x-show="activeTab === 'timers'" x-cloak>
+            <h2 class="text-2xl font-semibold mb-4">Daily Timers</h2>
+            <div class="bg-white p-6 rounded shadow mb-6 border-2" :class="editingTimerId ? 'border-blue-500' : 'border-transparent'">
+                <h3 class="font-bold mb-4 text-blue-600" x-text="editingTimerId ? 'Edit Daily Routine' : 'Add New Daily Routine'"></h3>
+                <div class="space-y-4">
+                    <input type="text" x-model="newTimer.name" placeholder="Timer Name (e.g. Morning Lights)" class="w-full border p-2 rounded font-bold">
+                    
+                    <div class="space-y-2">
+                        <label class="text-sm font-semibold">Sequence Steps:</label>
+                        <template x-for="(step, index) in newTimer.steps" :key="index">
+                            <div class="border p-3 rounded bg-gray-50 space-y-2 relative">
+                                <button @click="newTimer.steps.splice(index, 1)" class="absolute top-2 right-2 text-red-400 hover:text-red-600">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="6 18L18 6M6 6l12 12"></path></svg>
+                                </button>
+                                
+                                <div class="grid grid-cols-1 gap-2">
+                                    <div class="flex flex-col">
+                                        <label class="text-[10px] uppercase text-gray-400 font-bold">Command</label>
+                                        <select x-model="step.command_name" class="border p-1 text-sm rounded bg-white">
+                                            <option value="">Select Command</option>
+                                            <template x-for="(cmd, name) in config.commands" :key="name">
+                                                <option :value="name" x-text="name + ' (CH' + cmd.channel + ')'"></option>
+                                            </template>
+                                        </select>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div class="flex flex-col">
+                                            <label class="text-[10px] uppercase text-gray-400 font-bold">Repeats</label>
+                                            <input type="number" x-model.number="step.repeats" class="border p-1 text-sm rounded" min="1">
+                                        </div>
+                                        <div class="flex flex-col">
+                                            <label class="text-[10px] uppercase text-gray-400 font-bold">Delay (ms)</label>
+                                            <input type="number" x-model.number="step.interval_ms" class="border p-1 text-sm rounded" min="0" step="100">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                        <button @click="newTimer.steps.push({command_name: '', repeats: 1, interval_ms: 0})" 
+                                class="text-blue-600 text-sm font-bold w-full py-2 border-2 border-dashed border-blue-200 rounded hover:bg-blue-50 transition">+ Add Step</button>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="text-sm font-semibold">Execution Time (Daily):</label>
+                        <input type="time" x-model="newTimer.time" class="w-full border p-2 rounded text-lg font-mono">
+                    </div>
+
+                    <div class="flex space-x-2">
+                        <button @click="addTimer()" class="bg-blue-600 text-white px-4 py-3 rounded flex-1 font-bold shadow-md hover:bg-blue-700 transition" x-text="editingTimerId ? 'Update Daily Timer' : 'Save Daily Timer'"></button>
+                        <button x-show="editingTimerId" @click="cancelEdit()" class="bg-gray-400 text-white px-4 py-3 rounded font-bold shadow-md hover:bg-gray-500 transition">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <template x-for="timer in config.timers" :key="timer.id">
+                    <div class="bg-white p-4 rounded shadow border-l-4 border-blue-500">
+                        <div class="flex justify-between items-start mb-2">
+                            <div>
+                                <h4 class="font-bold text-lg" x-text="timer.name"></h4>
+                                <div class="flex items-center text-blue-600 font-bold">
+                                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    <span x-text="timer.time"></span>
+                                    <span class="ml-2 text-[10px] bg-blue-100 px-1 rounded uppercase">Daily</span>
+                                </div>
+                            </div>
+                            <div class="flex flex-col space-y-2 text-right">
+                                <div class="flex space-x-2 justify-end">
+                                    <button @click="editTimer(timer)" class="text-blue-500 hover:text-blue-700 text-xs font-bold uppercase">Edit</button>
+                                    <button @click="deleteTimer(timer.id)" class="text-red-500 hover:text-red-700 text-xs font-bold uppercase">Delete</button>
+                                </div>
+                                <button @click="executeTimer(timer.id, timer.name)" class="bg-blue-500 text-white px-2 py-1 rounded text-xs font-bold hover:bg-blue-600 shadow-sm transition">Try Now</button>
+                            </div>
+                        </div>
+                        <div class="bg-gray-50 p-2 rounded">
+                            <template x-for="(step, sIdx) in timer.steps" :key="sIdx">
+                                <div class="text-xs py-1 border-b last:border-0 flex justify-between">
+                                    <span x-text="(sIdx + 1) + '. ' + step.command_name + ' (CH' + (config.commands[step.command_name]?.channel || '?') + ')'"></span>
+                                    <span class="text-gray-400" x-text="step.repeats + 'x (' + step.interval_ms + 'ms)'"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Settings -->
+        <div x-show="activeTab === 'settings'" x-cloak>
+            <h2 class="text-2xl font-semibold mb-4 text-blue-600">Channel to Room Mapping</h2>
+            <div class="bg-white p-6 rounded shadow">
+                <p class="text-xs text-gray-500 mb-6 italic">Assign friendly names to your 3 hardware channels. These names will appear throughout the dashboard and timers.</p>
+                <div class="space-y-6">
+                    <template x-for="ch in [1,2,3]">
+                        <div class="flex items-center space-x-4 border-b pb-4 last:border-0">
+                            <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold"
+                                 :class="{'bg-blue-500': ch == 1, 'bg-purple-500': ch == 2, 'bg-orange-500': ch == 3}"
+                                 x-text="'#' + ch"></div>
+                            <div class="flex-1">
+                                <label class="text-[10px] uppercase font-bold text-gray-400">Room Name</label>
+                                <input type="text" x-model="config.mappings[ch]" placeholder="e.g. Living Room" class="w-full border p-2 rounded">
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                <button @click="saveMappings()" class="mt-8 bg-blue-600 text-white px-4 py-3 rounded w-full font-bold shadow hover:bg-blue-700 transition">Save Mapping Config</button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Notification Toast -->
+    <div x-show="notification.show" 
+         x-transition
+         class="fixed bottom-4 right-4 p-4 rounded shadow-lg text-white z-50"
+         :class="notification.type === 'error' ? 'bg-red-500' : 'bg-green-500'"
+         x-cloak>
+        <span x-text="notification.message"></span>
+    </div>
+
+    <script>
+        function remoteApp() {
+            return {
+                activeTab: 'dashboard',
+                config: { commands: {}, timers: [], mappings: {"1": "", "2": "", "3": ""} },
+                recordingStatus: 'idle',
+                recordingStep: 0,
+                recordedData: null,
+                newName: '',
+                newChannel: 1,
+                editingTimerId: null,
+                newTimer: { name: '', steps: [{command_name: '', repeats: 1, interval_ms: 0}], time: '07:00' },
+                notification: { show: false, message: '', type: 'success' },
+
+                async fetchConfig() {
+                    const res = await fetch('/api/config');
+                    const data = await res.json();
+                    // Ensure all 3 mappings exist
+                    if (!data.mappings["1"]) data.mappings["1"] = "";
+                    if (!data.mappings["2"]) data.mappings["2"] = "";
+                    if (!data.mappings["3"]) data.mappings["3"] = "";
+                    this.config = data;
+                },
+
+                notify(message, type = 'success') {
+                    this.notification = { show: true, message, type };
+                    setTimeout(() => this.notification.show = false, 3000);
+                },
+
+                async sendCommand(name) {
+                    try {
+                        const res = await fetch(`/api/commands/send/${name}`, { method: 'POST' });
+                        if (!res.ok) throw new Error(await res.text());
+                        this.notify(`Sent: ${name}`);
+                    } catch (e) {
+                        this.notify(e.message, 'error');
+                    }
+                },
+
+                async deleteCommand(name) {
+                    if (!confirm(`Delete ${name}?`)) return;
+                    await fetch(`/api/commands/${name}`, { method: 'DELETE' });
+                    this.fetchConfig();
+                },
+
+                async startRecording() {
+                    try {
+                        await fetch('/api/commands/record/start', { method: 'POST' });
+                        this.recordingStatus = 'recording';
+                        this.recordingStep = 1;
+                        this.recordedData = null;
+                    } catch (e) {
+                        this.notify('Failed to start recording', 'error');
+                    }
+                },
+
+                async stopRecording() {
+                    try {
+                        await fetch('/api/commands/record/stop', { method: 'POST' });
+                        this.recordingStatus = 'stopped';
+                        this.recordingStep = 2;
+                        
+                        setTimeout(async () => {
+                            const res = await fetch('/api/commands/record/data');
+                            const json = await res.json();
+                            this.recordedData = json.data;
+                            this.recordingStep = 3;
+                            this.notify('Data captured!');
+                        }, 500);
+                    } catch (e) {
+                        this.notify('Failed to stop recording', 'error');
+                    }
+                },
+
+                async saveCommand() {
+                    if (!this.newName || !this.recordedData) return;
+                    const res = await fetch(`/api/commands?name=${encodeURIComponent(this.newName)}&raw_data=${encodeURIComponent(this.recordedData)}&channel=${this.newChannel}`, { method: 'POST' });
+                    if (res.ok) {
+                        this.notify('Command registered');
+                        this.fetchConfig();
+                        this.newName = '';
+                        this.recordedData = null;
+                        this.recordingStep = 0;
+                        this.recordingStatus = 'idle';
+                        this.newChannel = 1;
+                    }
+                },
+
+                async addTimer() {
+                    if (!this.newTimer.name || !this.newTimer.time || this.newTimer.steps.length === 0) {
+                        this.notify('Please fill in name, time, and at least one step', 'error');
+                        return;
+                    }
+
+                    const url = this.editingTimerId ? `/api/timers/${this.editingTimerId}` : '/api/timers';
+                    const method = this.editingTimerId ? 'PUT' : 'POST';
+
+                    const res = await fetch(url, {
+                        method: method,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(this.newTimer)
+                    });
+                    if (res.ok) {
+                        this.notify(this.editingTimerId ? 'Timer updated' : 'Timer added');
+                        this.fetchConfig();
+                        this.cancelEdit();
+                    } else {
+                        const err = await res.json();
+                        this.notify(err.detail || 'Failed to save timer', 'error');
+                    }
+                },
+
+                editTimer(timer) {
+                    this.editingTimerId = timer.id;
+                    // Deep copy timer steps to avoid direct modification
+                    this.newTimer = {
+                        name: timer.name,
+                        time: timer.time,
+                        steps: JSON.parse(JSON.stringify(timer.steps))
+                    };
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                },
+
+                cancelEdit() {
+                    this.editingTimerId = null;
+                    this.newTimer = { name: '', steps: [{command_name: '', repeats: 1, interval_ms: 0}], time: '07:00' };
+                },
+
+                async deleteTimer(id) {
+                    await fetch(`/api/timers/${id}`, { method: 'DELETE' });
+                    this.fetchConfig();
+                },
+
+                async executeTimer(id, name) {
+                    try {
+                        const res = await fetch(`/api/timers/${id}/execute`, { method: 'POST' });
+                        if (!res.ok) throw new Error(await res.text());
+                        this.notify(`Execution started: ${name}`);
+                    } catch (e) {
+                        this.notify(`Failed to execute: ${name}`, 'error');
+                    }
+                },
+
+                async saveMappings() {
+                    const res = await fetch('/api/mappings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(this.config.mappings)
+                    });
+                    if (res.ok) {
+                        this.notify('Mappings saved');
+                        this.fetchConfig();
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>

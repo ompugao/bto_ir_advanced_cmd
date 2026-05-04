@@ -4,11 +4,12 @@ import uuid
 import logging
 
 # Setup logging before other imports
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    force=True
-)
+rootlogger = logging.getLogger()
+logFormatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
+rootlogger.setLevel(logging.DEBUG)
+consoleHandler = logging.StreamHandler()
+consoleHandler.setFormatter(logFormatter)
+rootlogger.addHandler(consoleHandler)
 
 import time
 from typing import Dict, List, Optional, Any

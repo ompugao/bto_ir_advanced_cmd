@@ -1,4 +1,19 @@
 # syntax=docker/dockerfile:1
+
+# --- Stage 1: Build Frontend ---
+FROM node:22-alpine AS frontend-builder
+WORKDIR /workspace
+# Copy frontend source
+COPY frontend/ ./frontend/
+# Create the output directory structure since vite.config.ts outputs to ../web/static
+RUN mkdir -p web/static
+WORKDIR /workspace/frontend
+# Use a cache mount for npm
+RUN --mount=type=cache,target=/root/.npm \
+    npm install
+RUN npm run build
+
+# --- Stage 2: Final Image ---
 FROM ubuntu:24.04
 
 # Set environment variables to non-interactive and timezone
@@ -35,6 +50,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Copy web application code
 # This is usually the layer that changes most often
 COPY web/ ./web/
+# Overwrite the static directory with the built React frontend
+COPY --from=frontend-builder /workspace/web/static/ ./web/static/
 
 # Expose FastAPI port
 EXPOSE 8000

@@ -5,8 +5,15 @@ services:
     privileged: true
     environment:
       - TZ=Asia/Tokyo
+      - IR_HUB_DATA_DIR=/app/data
     volumes:
-      - ./web/config.json:/app/web/config.json
+      # A directory (not a single file) so config writes can use atomic rename.
+      - ./data:/app/data
     ports:
       - "8000:8000"
-    restart: unless-stopped
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

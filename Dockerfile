@@ -50,6 +50,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Copy web application code
 # This is usually the layer that changes most often
 COPY web/ ./web/
+ENV IR_HUB_DATA_DIR=/app/data
 # Overwrite the static directory with the built React frontend
 COPY --from=frontend-builder /workspace/web/static/ ./web/static/
 
@@ -57,4 +58,4 @@ COPY --from=frontend-builder /workspace/web/static/ ./web/static/
 EXPOSE 8000
 
 # Start the application using the venv
-ENTRYPOINT ["/opt/venv/bin/uvicorn", "web.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/opt/venv/bin/uvicorn", "--factory", "web.main:app_factory", "--host", "0.0.0.0", "--port", "8000"]

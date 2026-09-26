@@ -17,7 +17,8 @@ A containerized web server to control the Bit Trade One Advanced USB IR Remote C
 
 2. **Project Setup**:
    - SSH into your NAS or use the File Station to upload this project folder.
-   - Ensure `web/config.json` exists and is writable.
+   - Settings live in `data/config.json` (the `data/` directory is mounted into the container).
+     When upgrading from a version that used `web/config.json`, copy it once: `mkdir -p data && cp web/config.json data/config.json`.
 
 3. **Running with Docker Compose**:
    ```bash

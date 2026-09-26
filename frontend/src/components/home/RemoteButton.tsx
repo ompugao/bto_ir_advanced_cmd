@@ -12,7 +12,7 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 type Feedback = 'idle' | 'sending' | 'ok' | 'error';
 
 /**
- * One remote button. Tapping sends once; for repeatable buttons (brighter/darker)
+ * One remote button. Tapping sends once; for repeatable buttons (brighter/darker/white/warmer)
  * holding keeps sending until released, like the physical remote.
  */
 const RemoteButton: React.FC<{ cmd: Command; notify: Notify; repeatable?: boolean }> = ({ cmd, notify, repeatable }) => {

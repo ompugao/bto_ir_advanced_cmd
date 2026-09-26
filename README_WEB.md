@@ -3,7 +3,7 @@
 A containerized web server to control the Bit Trade One Advanced USB IR Remote Controller.
 
 ## Features
-- **Home**: one remote per room (On/Off, Brighter/Darker, White/Warmer). Hold Brighter/Darker to keep dimming.
+- **Home**: one remote per room (On/Off, Brighter/Darker, White/Warmer). Hold Brighter, Darker, White or Warmer to keep stepping.
 - **Routines**: multi-step sequences run at a fixed time every day (Asia/Tokyo). Pick the room once; switching the
   room moves every step to the same button there. Duplicate a routine to reuse it for another room. Each routine
   shows its next run and last result.

@@ -1,6 +1,6 @@
 import React from 'react';
 import type { PageProps } from '../../types';
-import { REMOTE_ROWS, card, heading, muted, roomCommands } from '../../ui';
+import { REMOTE_ROWS, REPEATABLE_ROLES, card, heading, muted, roomCommands } from '../../ui';
 import { ChannelBadge } from '../ui/Controls';
 import RemoteButton from './RemoteButton';
 
@@ -30,7 +30,7 @@ const Home: React.FC<PageProps> = ({ config, notify, navigate }) => {
             {rows.map((row, i) => (
               <div key={i} className="grid grid-cols-2 gap-2">
                 {row.map((cmd, j) => cmd
-                  ? <RemoteButton key={cmd.id} cmd={cmd} notify={notify} repeatable={cmd.role === 'brighter' || cmd.role === 'darker'} />
+                  ? <RemoteButton key={cmd.id} cmd={cmd} notify={notify} repeatable={!!cmd.role && REPEATABLE_ROLES.has(cmd.role)} />
                   : <div key={j} />)}
               </div>
             ))}

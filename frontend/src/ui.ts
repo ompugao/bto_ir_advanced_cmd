@@ -13,6 +13,9 @@ export const ROLE_LABEL: Record<Role, string> = {
 export const REMOTE_ROWS: Role[][] = [['on', 'off'], ['brighter', 'darker'], ['white', 'warmer']];
 export const ROLES: Role[] = REMOTE_ROWS.flat();
 
+/** Buttons that step a level (brightness, colour); holding them on Home keeps sending. */
+export const REPEATABLE_ROLES: ReadonlySet<Role> = new Set<Role>(['brighter', 'darker', 'white', 'warmer']);
+
 export const roleIcon = (role: Role | null): IconName => role ?? 'button';
 
 export const label = (cmd: Command) => (cmd.role ? ROLE_LABEL[cmd.role] : cmd.name);

@@ -59,14 +59,14 @@ const Routines: React.FC<PageProps> = ({ config, status, refresh, notify, naviga
         <div className={`${card} p-10 text-center ${muted}`}>No routines yet.</div>
       )}
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {timers.map(t => {
           const info = t.id ? status?.timers[t.id] : undefined;
           const last = info?.last_result;
           const room = routineRoom(config, t);
           const rowBusy = busy === `row:${t.id}`;
           return (
-            <article key={t.id} className={`${card} p-4 ${t.enabled ? '' : 'opacity-70'}`}>
+            <article key={t.id} className={`${card} p-4 min-w-0 ${t.enabled ? '' : 'opacity-70'}`}>
               <div className="flex items-start gap-4">
                 <div className={`text-3xl font-semibold tabular-nums leading-none ${t.enabled ? heading : muted}`}>{t.time}</div>
                 <div className="flex-1 min-w-0">

@@ -15,7 +15,7 @@ const Home: React.FC<PageProps> = ({ config, notify, navigate }) => {
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {config.rooms.map(room => {
         const cmds = roomCommands(config, room.id);
         const byRole = new Map(cmds.filter(c => c.role).map(c => [c.role, c]));

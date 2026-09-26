@@ -4,12 +4,15 @@ export interface Room {
   channel: number;
 }
 
+export type Role = 'on' | 'off' | 'brighter' | 'darker' | 'white' | 'warmer';
+
 export interface Command {
   id: string;
   room_id: string;
   name: string;
   raw_data: string;
   derived: boolean;
+  role: Role | null;
 }
 
 export interface TimerStep {
@@ -53,6 +56,7 @@ export interface Status {
 export interface Decoded {
   frames: string[];
   light_channel: number | null;
+  function: Role | null;
 }
 
 export type Notify = (message: string, type?: 'success' | 'error') => void;
@@ -62,4 +66,5 @@ export interface PageProps {
   status: Status | null;
   refresh: () => Promise<void>;
   notify: Notify;
+  navigate: (route: string) => void;
 }

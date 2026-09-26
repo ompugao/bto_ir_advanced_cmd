@@ -3,11 +3,15 @@
 A containerized web server to control the Bit Trade One Advanced USB IR Remote Controller.
 
 ## Features
-- **Rooms**: Each room has a light (or appliance) whose remote is set to a channel (CH1–3). Buttons belong to a room.
-- **Web UI**: Mobile-friendly dashboard to send any room's buttons.
-- **Recording**: Capture buttons from the physical remote. The capture is decoded, checked against the room's channel, and can be test-sent before saving.
-- **Channel conversion**: For supported lights (Panasonic ceiling lights, maker code `2C 52`), a button recorded in one room can be copied to another room and converted to its channel, so each button only has to be recorded once.
-- **Daily routines**: Multi-step sequences run at a fixed time every day (Asia/Tokyo), with repeats, a gap between repeats and an optional wait before the next step. The UI shows each routine's next run and last result.
+- **Home**: one remote per room (On/Off, Brighter/Darker, White/Warmer). Hold Brighter/Darker to keep dimming.
+- **Routines**: multi-step sequences run at a fixed time every day (Asia/Tokyo). Pick the room once; switching the
+  room moves every step to the same button there. Duplicate a routine to reuse it for another room. Each routine
+  shows its next run and last result.
+- **Settings**: rooms (name and remote channel CH1–3) and their buttons. "Add button" records from the physical remote;
+  the capture is decoded, its function (e.g. "Darker") and channel are recognised, and it can be test-sent before saving.
+- **Channel conversion**: for supported lights (Panasonic ceiling lights, maker code `2C 52`), buttons can be copied
+  from another room and converted to this room's channel, so each button only has to be recorded once.
+- Works on phones and desktops; follows the system's light/dark setting.
 
 ## About channels
 The channel is part of every IR code: the same "darken" button sends `2C 52 09 2B 22` on CH1 and `2C 52 09 33 3A` on CH2.

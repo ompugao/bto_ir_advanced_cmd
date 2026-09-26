@@ -3,12 +3,12 @@ import React from 'react';
 export type Toast = { id: number; message: string; type: 'success' | 'error' };
 
 const Toasts: React.FC<{ toasts: Toast[] }> = ({ toasts }) => (
-  <div className="fixed bottom-6 right-6 left-6 sm:left-auto z-50 flex flex-col items-end space-y-2">
+  <div className="fixed bottom-20 md:bottom-6 right-4 left-4 sm:left-auto z-[60] flex flex-col items-end space-y-2 pointer-events-none">
     {toasts.map(t => {
       const isError = t.type === 'error';
       return (
-        <div key={t.id} role={isError ? 'alert' : 'status'} className={`flex items-center space-x-3 px-5 py-3 rounded-xl shadow-lg border bg-white max-w-md ${
-          isError ? 'border-red-200 text-red-700' : 'border-green-200 text-green-700'
+        <div key={t.id} role={isError ? 'alert' : 'status'} className={`flex items-center space-x-3 px-5 py-3 rounded-xl shadow-lg border bg-white dark:bg-gray-900 max-w-md ${
+          isError ? 'border-red-200 dark:border-red-900 text-red-700 dark:text-red-300' : 'border-green-200 dark:border-green-900 text-green-700 dark:text-green-300'
         }`}>
           <div className={`flex items-center justify-center w-6 h-6 rounded-full shrink-0 ${isError ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
             {isError ? (

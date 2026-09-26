@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 
 from web.runner import IRRunner
 from web.scheduler import MISFIRE_GRACE_SECONDS, TimerScheduler
+from web.models import migrate
 from web.store import ConfigStore
 from web.tests.conftest import FakeController
 
@@ -10,7 +11,7 @@ TZ = ZoneInfo("Asia/Tokyo")
 
 
 def make(seeded_path, **kw):
-    store = ConfigStore(seeded_path)
+    store = ConfigStore(seeded_path, migrate=migrate)
     fake = FakeController(**kw)
     runner = IRRunner(fake, store, now=lambda: datetime.now(TZ))
     return store, fake, runner
@@ -28,7 +29,7 @@ def test_sequences_never_interleave(seeded_path):
     expected = []
     for t in timers[:3] + [timers[0]]:
         for s in t.steps:
-            expected += [config.commands[s.command_name].raw_data] * s.repeats
+            expected += [config.command(s.command_id).raw_data] * s.repeats
     assert fake.sent == expected
     runner.shutdown()
 
@@ -36,7 +37,7 @@ def test_sequences_never_interleave(seeded_path):
 def test_failure_is_recorded(seeded_path):
     store, fake, runner = make(seeded_path)
     timer = store.read().timers[0]
-    fake.fail_on.add(store.read().commands[timer.steps[0].command_name].raw_data)
+    fake.fail_on.add(store.read().command(timer.steps[0].command_id).raw_data)
     result = runner.submit_timer(timer.id, "schedule").result(timeout=5)
     assert result.ok is False and result.errors
     assert runner.last_results()[timer.id].ok is False
@@ -73,3 +74,18 @@ def test_scheduler_sync_matches_enabled_timers(seeded_path):
     finally:
         sched.shutdown()
         runner.shutdown()
+
+
+def test_delay_after_step(seeded_path):
+    store, fake, runner = make(seeded_path)
+    with store.transaction() as config:
+        timer = config.timers[1]  # "Darken": two steps
+        timer.steps[0].delay_after_ms = 300
+        timer.steps[-1].delay_after_ms = 5000  # ignored after the last step
+        for s in timer.steps:
+            s.repeats = 1
+    start = datetime.now()
+    assert runner.submit_timer(timer.id, "manual").result(timeout=5).ok
+    elapsed = (datetime.now() - start).total_seconds()
+    assert 0.3 <= elapsed < 2
+    runner.shutdown()

@@ -88,3 +88,10 @@ def client(seeded_path, fake):
     app = create_app(seeded_path, controller=fake, run_scheduler=False)
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture
+def short_record_app(seeded_path, fake):
+    app = create_app(seeded_path, controller=fake, run_scheduler=False, record_timeout=0.2)
+    with TestClient(app) as c:
+        yield c

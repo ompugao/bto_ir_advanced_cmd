@@ -66,7 +66,7 @@ class IRRunner:
 
     def _run_timer(self, timer_id: str, trigger: str) -> RunResult:
         config = self.store.read()
-        timer = next((t for t in config.timers if t.id == timer_id), None)
+        timer = config.timer(timer_id)
         result = RunResult(timer_id=timer_id, trigger=trigger, started_at=self._now())
         if not timer:
             logger.error(f"Timer {timer_id} not found during execution")
@@ -77,24 +77,28 @@ class IRRunner:
 
         logger.info(f"Executing timer sequence: {timer.name} ({trigger})")
         self._record(result)
-        for step in timer.steps:
-            cmd_obj = config.commands.get(step.command_name)
-            if not cmd_obj:
-                msg = f"command {step.command_name} not found; step skipped"
+        for n, step in enumerate(timer.steps):
+            cmd = config.command(step.command_id)
+            if not cmd:
+                msg = f"step {n + 1}: command no longer exists; skipped"
                 logger.warning(msg)
                 result.errors.append(msg)
                 continue
+            room = config.room(cmd.room_id)
+            label = f"{room.name if room else '?'} / {cmd.name}"
             for i in range(step.repeats):
                 try:
-                    logger.info(f"Step: {step.command_name} (Ch{cmd_obj.channel}) (Repeat {i+1}/{step.repeats})")
-                    self.controller.send_raw_data(cmd_obj.raw_data)
+                    logger.info(f"Step {n + 1}: {label} (repeat {i + 1}/{step.repeats})")
+                    self.controller.send_raw_data(cmd.raw_data)
                 except Exception as e:
-                    msg = f"{step.command_name} failed: {e}"
+                    msg = f"step {n + 1} ({label}) failed: {e}"
                     logger.error(msg)
                     result.errors.append(msg)
                     break  # Stop current step on error
                 if i < step.repeats - 1:
                     time.sleep(step.interval_ms / 1000.0)
+            if step.delay_after_ms and n < len(timer.steps) - 1:
+                time.sleep(step.delay_after_ms / 1000.0)
 
         result.ok = not result.errors
         result.finished_at = self._now()

@@ -1,3 +1,2 @@
 config.json
-!static/index.html
-static/*
+static/

@@ -29,9 +29,24 @@ def test_v1_nas_config_migrates(nas_config_v1):
             [(s["repeats"], s["interval_ms"], 0) for s in old["steps"]]
 
 
-def test_v2_is_left_alone(nas_config_v1):
-    v2 = migrate(nas_config_v1)
-    assert migrate(v2) is v2
+def test_current_version_is_left_alone(nas_config_v1):
+    current = migrate(nas_config_v1)
+    assert migrate(current) is current
+
+
+def test_v2_gets_roles_without_duplicates(nas_config_v1):
+    from web.models import _migrate_v1
+    v2 = _migrate_v1(nas_config_v1)
+    # A second "darker" button in the Living Room keeps no role.
+    extra = dict(next(c for c in v2["commands"] if c["name"] == "DARKEN_LIGHT" and c["room_id"] == v2["rooms"][0]["id"]))
+    extra.update(id="extra", name="DARKEN_AGAIN")
+    v2["commands"].append(extra)
+    config = Config.model_validate(migrate(v2))
+    assert config.version == 3
+    roles = {(c.room_id, c.name): c.role for c in config.commands}
+    assert roles[(extra["room_id"], "DARKEN_LIGHT")] == "darker"
+    assert roles[(extra["room_id"], "DARKEN_AGAIN")] is None
+    assert sum(r is not None for r in roles.values()) == 8
 
 
 def test_suffix_kept_on_clash_and_dangling_steps_dropped():
@@ -46,3 +61,15 @@ def test_suffix_kept_on_clash_and_dangling_steps_dropped():
     config = Config.model_validate(migrate(v1))
     assert names_by_room(config) == {"Kitchen": ["A", "A_CH1", "B"], "Bedroom": []}
     assert config.timers[0].steps == [] and config.timers[0].enabled is False
+
+
+def test_live_v2_config_upgrades():
+    import json, os
+    with open(os.path.join(os.path.dirname(__file__), "fixtures", "config_v2_nas.json")) as f:
+        v2 = json.load(f)
+    assert v2["version"] == 2
+    config = Config.model_validate(migrate(v2))
+    by_room = {r.name: sorted(c.role for c in config.commands if c.room_id == r.id) for r in config.rooms}
+    six = ["brighter", "darker", "off", "on", "warmer", "white"]
+    assert by_room == {"Living Room": six, "Dining Room": six, "Bed Room": six}
+    assert [t.model_dump() for t in config.timers] == v2["timers"]

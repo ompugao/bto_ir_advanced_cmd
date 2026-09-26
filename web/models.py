@@ -9,6 +9,7 @@ from web import ir_codec
 
 logger = logging.getLogger(__name__)
 
+Role = Literal["on", "off", "brighter", "darker", "white", "warmer"]
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
 TIME_PATTERN = r"^([01]\d|2[0-3]):[0-5]\d$"
 
@@ -31,6 +32,7 @@ class Command(BaseModel):
     name: Name
     raw_data: str
     derived: bool = False  # generated from another room's capture rather than recorded
+    role: Optional[Role] = None  # what the button does; None for custom buttons
 
     @field_validator("raw_data")
     @classmethod
@@ -55,7 +57,7 @@ class Timer(BaseModel):
 
 
 class Config(BaseModel):
-    version: Literal[2] = 2
+    version: Literal[3] = 3
     rooms: List[Room] = []
     commands: List[Command] = []
     timers: List[Timer] = []
@@ -78,6 +80,10 @@ class Config(BaseModel):
             if key in seen:
                 raise ValueError(f"duplicate command name {c.name!r} in one room")
             seen.add(key)
+            if c.role:
+                if (c.room_id, "role", c.role) in seen:
+                    raise ValueError(f"another button in this room is already '{c.role}'")
+                seen.add((c.room_id, "role", c.role))
         command_ids = {c.id for c in self.commands}
         for t in self.timers:
             for s in t.steps:
@@ -101,9 +107,26 @@ class Config(BaseModel):
 
 def migrate(data: dict) -> dict:
     """Upgrade older config layouts. Returns `data` itself when nothing changed."""
-    if data.get("version") == 2:
+    if data.get("version") == 3:
         return data
-    return _migrate_v1(data)
+    if data.get("version") != 2:
+        data = _migrate_v1(data)
+    return _migrate_v2(data)
+
+
+def _migrate_v2(data: dict) -> dict:
+    """v3 adds `role` to commands, detected from the code where it is recognised."""
+    commands, taken = [], set()
+    for c in data.get("commands", []):
+        c = dict(c)
+        role = c.get("role") or ir_codec.light_function(c["raw_data"])
+        if role and (c["room_id"], role) not in taken:
+            taken.add((c["room_id"], role))
+            c["role"] = role
+        else:
+            c["role"] = None
+        commands.append(c)
+    return {**data, "version": 3, "commands": commands}
 
 
 def _migrate_v1(data: dict) -> dict:
@@ -154,3 +177,13 @@ def _migrate_v1(data: dict) -> dict:
         })
 
     return {"version": 2, "rooms": list(rooms.values()), "commands": new_commands, "timers": timers}
+
+
+def equivalent_command(config: "Config", command: Command, room_id: str) -> Optional[Command]:
+    """The button in `room_id` that does the same thing: same role, else same name."""
+    in_room = [c for c in config.commands if c.room_id == room_id]
+    if command.role:
+        match = next((c for c in in_room if c.role == command.role), None)
+        if match:
+            return match
+    return next((c for c in in_room if c.name.casefold() == command.name.casefold()), None)

@@ -90,4 +90,23 @@ def test_malformed_raw(raw):
 
 def test_describe(nas_config_v1):
     d = ir_codec.describe(nas_config_v1["commands"]["DARKEN_LIGHT"]["raw_data"])
-    assert d == {"frames": ["2C 52 09 33 3A"], "light_channel": 2}
+    assert d == {"frames": ["2C 52 09 33 3A"], "light_channel": 2, "function": "darker"}
+
+
+FUNCTIONS = {"darken": "darker", "off": "off", "white": "white", "warmer": "warmer"}
+
+
+def test_light_function_on_every_channel(nas_config_v1):
+    for name, cmd in nas_config_v1["commands"].items():
+        for ch in (1, 2, 3):
+            assert ir_codec.light_function(ir_codec.derive_raw(cmd["raw_data"], ch)) is not None, name
+    for (button, ch), frame in SAMPLES.items():
+        raw = ir_codec.derive_raw(nas_config_v1["commands"][
+            {"darken": "DARKEN_LIGHT", "off": "TURN_OFF_LIGHT", "white": "WHITE_LIGHT", "warmer": "WARMER_LIGHT"}[button]
+        ]["raw_data"], ch)
+        assert ir_codec.decode_frames(raw) == [to_bytes(frame)]
+        assert ir_codec.light_function(raw) == FUNCTIONS[button]
+    expected = {"TURN_OFF_LIGHT": "off", "TURN_ON_LIGHT": "on", "BRIGHTEN_LIGHT": "brighter",
+                "DARKEN_LIGHT": "darker", "DARKEN_LIGHT_CH1": "darker", "WHITE_LIGHT": "white",
+                "WARMER_LIGHT": "warmer", "ORANGE_LIGHT": "warmer"}
+    assert {n: ir_codec.light_function(c["raw_data"]) for n, c in nas_config_v1["commands"].items()} == expected

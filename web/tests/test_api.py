@@ -16,7 +16,7 @@ def cfg(client):
 
 def test_config_is_migrated(cfg):
     c = cfg()
-    assert c["version"] == 2 and len(c["commands"]) == 8 and len(c["timers"]) == 7
+    assert c["version"] == 3 and len(c["commands"]) == 8 and len(c["timers"]) == 7
 
 
 def test_status(client, cfg):
@@ -53,9 +53,12 @@ def test_add_command_checks_channel_and_duplicates(client, cfg):
     r = client.post("/api/commands", json={"room_id": ch2["id"], "name": "X", "raw_data": "nonsense"})
     assert r.status_code == 422
 
-    r = client.post("/api/commands", json={"room_id": living["id"], "name": "X", "raw_data": ch2_code,
-                                           "allow_channel_mismatch": True})
-    assert r.status_code == 201
+    # Accepted despite the mismatch, but Living Room already has a "darker" button.
+    body = {"room_id": living["id"], "name": "X", "raw_data": ch2_code, "allow_channel_mismatch": True}
+    r = client.post("/api/commands", json=body)
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "role_taken"
+    r = client.post("/api/commands", json={**body, "role": None})
+    assert r.status_code == 201 and r.json()["role"] is None
 
 
 def test_replace_keeps_id_so_timers_still_work(client, cfg):
@@ -63,7 +66,7 @@ def test_replace_keeps_id_so_timers_still_work(client, cfg):
     old = c["cmd"][("Living Room", "TURN_OFF_LIGHT")]
     new_raw = ir_codec.derive_raw(c["cmd"][("Living Room", "DARKEN_LIGHT")]["raw_data"], 1)
     r = client.post("/api/commands", json={"room_id": old["room_id"], "name": "TURN_OFF_LIGHT",
-                                           "raw_data": new_raw, "replace": True})
+                                           "raw_data": new_raw, "replace": True, "role": "off"})
     assert r.status_code == 201 and r.json()["id"] == old["id"]
     assert cfg()["cmd"][("Living Room", "TURN_OFF_LIGHT")]["raw_data"] == new_raw
 
@@ -155,7 +158,7 @@ def test_recording_flow(client, fake, cfg):
     fake.recorded = raw
     r = client.post("/api/record/stop").json()
     assert r["raw_data"] == raw and r["same_as_previous"] is False
-    assert r["decoded"] == {"frames": ["2C 52 39 95 AC"], "light_channel": 2}
+    assert r["decoded"] == {"frames": ["2C 52 39 95 AC"], "light_channel": 2, "function": "warmer"}
     # Nothing new pressed: the receiver still holds the old capture.
     client.post("/api/record/start")
     assert client.post("/api/record/stop").json()["same_as_previous"] is True
@@ -185,3 +188,32 @@ def test_recording_times_out(short_record_app, fake):
     assert state["active"] is False and state["expired"] is True
     assert fake.calls.count("stop") == 1
     assert c.post("/api/record/stop").status_code == 409
+
+
+def test_roles_detected_and_editable(client, cfg):
+    c = cfg()
+    assert {x["name"]: x["role"] for x in c["commands"] if x["room_id"] == c["room"]["Living Room"]["id"]} == {
+        "TURN_OFF_LIGHT": "off", "ORANGE_LIGHT": "warmer", "TURN_ON_LIGHT": "on",
+        "BRIGHTEN_LIGHT": "brighter", "WHITE_LIGHT": "white", "DARKEN_LIGHT": "darker"}
+    off = c["cmd"][("Living Room", "TURN_OFF_LIGHT")]
+    r = client.patch(f"/api/commands/{off['id']}", json={"role": "on"})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "role_taken"
+    r = client.patch(f"/api/commands/{off['id']}", json={"role": None})
+    assert r.status_code == 200 and r.json()["role"] is None and r.json()["name"] == "TURN_OFF_LIGHT"
+    r = client.patch(f"/api/commands/{off['id']}", json={"name": "Off"})
+    assert r.json()["name"] == "Off" and r.json()["role"] is None
+
+
+def test_copy_missing_matches_by_role(client, cfg):
+    c = cfg()
+    living, ch2 = c["room"]["Living Room"], c["room"]["Channel 2"]
+    r = client.post(f"/api/rooms/{ch2['id']}/copy-missing", json={"from_room_id": living["id"]})
+    assert r.status_code == 200 and r.json()["unsupported"] == []
+    # Channel 2 already had darker (DARKEN_LIGHT) and warmer (WARMER_LIGHT, = Living Room's ORANGE_LIGHT).
+    assert sorted(x["role"] for x in r.json()["added"]) == ["brighter", "off", "on", "white"]
+    c = cfg()
+    roles = sorted(x["role"] for x in c["commands"] if x["room_id"] == ch2["id"])
+    assert roles == ["brighter", "darker", "off", "on", "warmer", "white"]
+    assert all(ir_codec.light_channel(x["raw_data"]) == 2 for x in c["commands"] if x["room_id"] == ch2["id"])
+    again = client.post(f"/api/rooms/{ch2['id']}/copy-missing", json={"from_room_id": living["id"]})
+    assert again.json()["added"] == []

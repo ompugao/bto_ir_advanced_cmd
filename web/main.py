@@ -14,7 +14,8 @@ from pydantic import BaseModel, Field, ValidationError
 from web import ir_codec
 from web.device import device_connected
 from web.ir_controller import IRController
-from web.models import TIME_PATTERN, Command, Config, Name, Room, Timer, TimerStep, migrate
+from web.models import (TIME_PATTERN, Command, Config, Name, Role, Room, Timer, TimerStep, equivalent_command,
+                        migrate)
 from web.recording import NoRecording, RecordingSession
 from web.runner import IRRunner
 from web.scheduler import TimerScheduler
@@ -62,12 +63,18 @@ class CommandIn(BaseModel):
     room_id: str
     name: Name
     raw_data: str
+    role: Optional[Role] = None  # omitted: detected from the code
     replace: bool = False  # overwrite a command with the same name in the room
     allow_channel_mismatch: bool = False
 
 
 class CommandPatch(BaseModel):
-    name: Name
+    name: Optional[Name] = None
+    role: Optional[Role] = None  # send null to make it a custom button
+
+
+class CopyMissingIn(BaseModel):
+    from_room_id: str
 
 
 class DeriveIn(BaseModel):
@@ -96,15 +103,23 @@ def _check_raw(raw: str):
         raise HTTPException(status_code=422, detail=f"Invalid IR data: {e}")
 
 
+def _check_role_free(config: Config, room: Room, role: Optional[str], except_id: Optional[str] = None):
+    other = next((c for c in config.commands
+                  if role and c.room_id == room.id and c.role == role and c.id != except_id), None)
+    if other:
+        raise _conflict(f"{other.name} is already the '{role}' button in {room.name}", code="role_taken")
+
+
 def _derive_into(config: Config, source: Command, room: Room) -> Command:
     """Adds a copy of `source` for `room`, with the code rewritten for its channel."""
-    if any(c.room_id == room.id and c.name.casefold() == source.name.casefold() for c in config.commands):
-        raise _conflict(f"{room.name} already has a command named {source.name}")
+    existing = equivalent_command(config, source, room.id)
+    if existing:
+        raise _conflict(f"{room.name} already has {existing.name}", code="exists")
     try:
         raw = ir_codec.derive_raw(source.raw_data, room.channel)
     except ir_codec.NotDerivable as e:
         raise HTTPException(status_code=422, detail=f"{source.name}: {e}")
-    cmd = Command(room_id=room.id, name=source.name, raw_data=raw, derived=True)
+    cmd = Command(room_id=room.id, name=source.name, raw_data=raw, derived=True, role=source.role)
     config.commands.append(cmd)
     return cmd
 
@@ -182,6 +197,23 @@ def create_app(config_path: Optional[str] = None, controller: Optional[IRControl
                         _derive_into(config, src, room)
         return {"room": room, "skipped": skipped}
 
+    @app.post("/api/rooms/{room_id}/copy-missing")
+    def copy_missing(room_id: str, body: CopyMissingIn):
+        """Generates every button of another room that this room doesn't have yet."""
+        added, unsupported = [], []
+        with store.transaction() as config:
+            room, source_room = config.room(room_id), config.room(body.from_room_id)
+            if not room or not source_room:
+                raise HTTPException(status_code=404, detail="Room not found")
+            for src in [c for c in config.commands if c.room_id == source_room.id]:
+                if equivalent_command(config, src, room.id):
+                    continue
+                if ir_codec.light_channel(src.raw_data) is None:
+                    unsupported.append(src.name)
+                    continue
+                added.append(_derive_into(config, src, room))
+        return {"added": added, "unsupported": unsupported}
+
     @app.put("/api/rooms/{room_id}")
     def update_room(room_id: str, body: RoomIn):
         not_rewritten = []
@@ -230,22 +262,29 @@ def create_app(config_path: Optional[str] = None, controller: Optional[IRControl
                              if c.room_id == room.id and c.name.casefold() == body.name.casefold()), None)
             if existing and not body.replace:
                 raise _conflict(f"{room.name} already has a command named {existing.name}", code="exists")
+            role = body.role if "role" in body.model_fields_set else ir_codec.light_function(body.raw_data)
+            _check_role_free(config, room, role, except_id=existing.id if existing else None)
             if existing:
                 # Keep the id so timer steps keep pointing at it.
                 existing.name, existing.raw_data, existing.derived = body.name, body.raw_data.strip(), False
+                existing.role = role
                 cmd = existing
             else:
-                cmd = Command(room_id=room.id, name=body.name, raw_data=body.raw_data)
+                cmd = Command(room_id=room.id, name=body.name, raw_data=body.raw_data, role=role)
                 config.commands.append(cmd)
         return cmd
 
     @app.patch("/api/commands/{command_id}")
-    def rename_command(command_id: str, body: CommandPatch):
+    def update_command(command_id: str, body: CommandPatch):
         with store.transaction() as config:
             cmd = config.command(command_id)
             if not cmd:
                 raise HTTPException(status_code=404, detail="Command not found")
-            cmd.name = body.name
+            if body.name is not None:
+                cmd.name = body.name
+            if "role" in body.model_fields_set:
+                _check_role_free(config, config.room(cmd.room_id), body.role, except_id=cmd.id)
+                cmd.role = body.role
         return cmd
 
     @app.delete("/api/commands/{command_id}")

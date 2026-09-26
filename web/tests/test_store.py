@@ -93,7 +93,7 @@ def test_migration_keeps_backup_and_is_written_once(seeded_path):
     original = open(seeded_path).read()
     ConfigStore(seeded_path, migrate=migrate)
     assert open(seeded_path + ".premigration.bak").read() == original
-    assert json.load(open(seeded_path))["version"] == 2
+    assert json.load(open(seeded_path))["version"] == 3
     migrated = open(seeded_path).read()
     ConfigStore(seeded_path, migrate=migrate)
     assert open(seeded_path).read() == migrated

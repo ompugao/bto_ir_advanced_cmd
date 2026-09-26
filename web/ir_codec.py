@@ -38,6 +38,18 @@ LIGHT_PROTOCOLS: Dict[Tuple[int, int], Dict[int, Tuple[int, int]]] = {
 }
 CHANNELS = (1, 2, 3)
 
+ROLES = ("on", "off", "brighter", "darker", "white", "warmer")
+
+# What each button does, keyed by (maker, group, command byte on CH1).
+LIGHT_FUNCTIONS: Dict[Tuple[int, int, int, int], str] = {
+    (0x2C, 0x52, 0x09, 0x2D): "on",
+    (0x2C, 0x52, 0x09, 0x2F): "off",
+    (0x2C, 0x52, 0x09, 0x2A): "brighter",
+    (0x2C, 0x52, 0x09, 0x2B): "darker",
+    (0x2C, 0x52, 0x39, 0x90): "white",
+    (0x2C, 0x52, 0x39, 0x91): "warmer",
+}
+
 
 def parse_raw(raw: str) -> List[int]:
     try:
@@ -146,6 +158,14 @@ def with_light_channel(frame: List[int], channel: int) -> List[int]:
     return [frame[0], frame[1], frame[2], cmd, frame[2] ^ cmd]
 
 
+def light_function(raw: str) -> Optional[str]:
+    """The button's function (one of ROLES) for a recognised light code, else None."""
+    if light_channel(raw) is None:
+        return None
+    frame = with_light_channel(decode_frames(raw)[0], 1)
+    return LIGHT_FUNCTIONS.get(tuple(frame[:4]))
+
+
 def derive_raw(raw: str, channel: int) -> str:
     """Rewrites a recognised light code for another channel.
 
@@ -184,4 +204,5 @@ def describe(raw: str) -> dict:
     return {
         "frames": [" ".join(f"{b:02X}" for b in f) for f in frames],
         "light_channel": light_channel(raw),
+        "function": light_function(raw),
     }

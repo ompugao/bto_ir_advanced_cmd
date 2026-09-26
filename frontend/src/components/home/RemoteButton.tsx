@@ -5,7 +5,7 @@ import { label, roleIcon } from '../../ui';
 import Icon from '../ui/Icon';
 
 const HOLD_DELAY_MS = 400; // press this long before repeating starts
-const REPEAT_GAP_MS = 250; // pause between repeated sends (each send itself takes ~100 ms)
+const REPEAT_GAP_MS = 100; // pause between repeated sends (each send itself takes ~100 ms)
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 

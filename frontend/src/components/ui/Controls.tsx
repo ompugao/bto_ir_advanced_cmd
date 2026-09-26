@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Icon from './Icon';
 import { channelStyle } from '../../ui';
 
@@ -55,19 +55,57 @@ export const ChannelBadge: React.FC<{ channel: number }> = ({ channel }) => (
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
-/** 24-hour HH:MM picker (native time inputs follow the OS locale and may show AM/PM). */
+/**
+ * 24-hour HH:MM picker: tap the time, then an hour and a 5-minute slot; ±1 fine-tunes the minute.
+ * (Native time inputs follow the OS locale and may show AM/PM; long selects need scrolling.)
+ */
 export const TimeField: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => {
-  const [h, m] = value.split(':');
-  const select = 'bg-white dark:bg-gray-950 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded-lg px-2 py-2 font-mono text-base focus:ring-2 focus:ring-blue-500/50 outline-none';
+  const [open, setOpen] = useState(false);
+  const [h, m] = value.split(':').map(Number);
+  const set = (hour: number, minute: number) => onChange(`${pad(hour)}:${pad(minute)}`);
+  const shiftMinute = (delta: number) => {
+    const total = (h * 60 + m + delta + 1440) % 1440;
+    set(Math.floor(total / 60), total % 60);
+  };
+  const cell = (selected: boolean) =>
+    `py-1.5 rounded-lg text-sm font-mono tabular-nums transition-colors ${selected
+      ? 'bg-blue-600 text-white'
+      : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700'}`;
+
   return (
-    <div className="flex items-center gap-1">
-      <select aria-label="Hour" value={h} onChange={e => onChange(`${e.target.value}:${m}`)} className={select}>
-        {Array.from({ length: 24 }, (_, i) => <option key={i} value={pad(i)}>{pad(i)}</option>)}
-      </select>
-      <span className="font-mono text-gray-500">:</span>
-      <select aria-label="Minute" value={m} onChange={e => onChange(`${h}:${e.target.value}`)} className={select}>
-        {Array.from({ length: 60 }, (_, i) => <option key={i} value={pad(i)}>{pad(i)}</option>)}
-      </select>
+    <div>
+      <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
+              className={`font-mono text-lg tabular-nums px-3 py-1.5 rounded-lg border ${open
+                ? 'border-blue-500 ring-2 ring-blue-500/30'
+                : 'border-gray-300 dark:border-gray-700'} bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100`}>
+        {value}
+      </button>
+      {open && (
+        <div className="mt-2 p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 space-y-3 w-72 max-w-full">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">Hour</div>
+            <div className="grid grid-cols-6 gap-1">
+              {Array.from({ length: 24 }, (_, i) => (
+                <button key={i} type="button" onClick={() => set(i, m)} className={cell(i === h)}>{pad(i)}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">Minute</div>
+            <div className="grid grid-cols-6 gap-1">
+              {Array.from({ length: 12 }, (_, i) => i * 5).map(min => (
+                <button key={min} type="button" onClick={() => set(h, min)} className={cell(min === m)}>{pad(min)}</button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => shiftMinute(-1)} className={`${cell(false)} px-3`}>−1 min</button>
+            <button type="button" onClick={() => shiftMinute(1)} className={`${cell(false)} px-3`}>+1 min</button>
+            <div className="flex-1" />
+            <button type="button" onClick={() => setOpen(false)} className="text-sm font-medium text-blue-600 dark:text-blue-400 px-2 py-1">Done</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

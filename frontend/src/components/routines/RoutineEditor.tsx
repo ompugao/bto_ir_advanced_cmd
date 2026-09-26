@@ -99,7 +99,7 @@ const RoutineEditor: React.FC<Props> = ({ config, initial, notify, onClose, onSa
         </div>
       }
     >
-      <div className="grid grid-cols-[1fr_auto] gap-3">
+      <div className="space-y-4">
         <div>
           <label className={`text-xs font-semibold ${muted} mb-1.5 block`}>Name</label>
           <input value={name} onChange={e => setName(e.target.value)} maxLength={60} placeholder="e.g. Prepare sleep" className={inputClass} />
@@ -129,9 +129,16 @@ const RoutineEditor: React.FC<Props> = ({ config, initial, notify, onClose, onSa
             <div key={step.key} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/50 p-3 space-y-3">
               <div className="flex items-center gap-2">
                 <span className={`w-6 h-6 rounded-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs font-semibold flex items-center justify-center ${muted}`}>{index + 1}</span>
-                {step.roomId !== roomId && (
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300">{roomName(config, step.roomId)}</span>
-                )}
+                <select
+                  aria-label={`Room for step ${index + 1}`}
+                  value={step.roomId}
+                  onChange={e => update(step.key, retarget(step, e.target.value))}
+                  className={`text-xs font-medium pl-2 pr-1 py-1 rounded-full border outline-none ${step.roomId === roomId
+                    ? 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'
+                    : 'bg-purple-100 dark:bg-purple-950 border-purple-200 dark:border-purple-900 text-purple-700 dark:text-purple-300'}`}
+                >
+                  {config.rooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                </select>
                 <div className="flex-1" />
                 <button onClick={() => move(index, -1)} disabled={index === 0} className={`p-1 ${muted} disabled:opacity-30`} aria-label="Move up"><Icon name="up" className="w-4 h-4" /></button>
                 <button onClick={() => move(index, 1)} disabled={index === steps.length - 1} className={`p-1 ${muted} disabled:opacity-30`} aria-label="Move down"><Icon name="down" className="w-4 h-4" /></button>
@@ -162,13 +169,7 @@ const RoutineEditor: React.FC<Props> = ({ config, initial, notify, onClose, onSa
               </div>
 
               {open && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                  <label className={`text-xs ${muted}`}>
-                    Room
-                    <select value={step.roomId} onChange={e => update(step.key, retarget(step, e.target.value))} className={`${inputClass} mt-1 text-sm py-1.5`}>
-                      {config.rooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                    </select>
-                  </label>
+                <div className="grid grid-cols-2 gap-3 pt-1">
                   <label className={`text-xs ${muted}`}>
                     Gap between presses (ms)
                     <input type="number" min={0} max={60000} step={50} value={step.interval_ms} disabled={step.repeats < 2}

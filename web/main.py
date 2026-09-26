@@ -369,4 +369,5 @@ def create_app(config_path: Optional[str] = None, controller: Optional[IRControl
 def app_factory() -> FastAPI:
     """Entry point for `uvicorn --factory web.main:app_factory`."""
     setup_logging()
-    return create_app()
+    binary = os.environ.get("IR_HUB_BINARY")
+    return create_app(controller=IRController(binary) if binary else None)

@@ -1,162 +1,171 @@
-import React, { useState } from 'react';
-import type { Config } from '../types';
+import React, { useEffect, useState } from 'react';
+import type { Decoded, PageProps, Status } from '../types';
+import { api, ApiError } from '../api';
+import { channelStyle, inputClass, primaryButton, secondaryButton, useBusy } from '../ui';
 
-interface RecordProps {
-  config: Config;
-  fetchConfig: () => void;
-  notify: (message: string, type?: 'success' | 'error') => void;
+interface Capture {
+  raw_data: string;
+  same_as_previous: boolean;
+  decoded: Decoded;
 }
 
-const RecordComponent: React.FC<RecordProps> = ({ config, fetchConfig, notify }) => {
-  const [recordingStatus, setRecordingStatus] = useState<'idle' | 'recording' | 'stopped'>('idle');
-  const [recordingStep, setRecordingStep] = useState<number>(0);
-  const [recordedData, setRecordedData] = useState<string | null>(null);
-  const [newName, setNewName] = useState('');
-  const [newChannel, setNewChannel] = useState<number>(1);
+type RecordingState = Status['recording'];
 
-  const startRecording = async () => {
+const secondsLeft = (expiresAt: string | null) =>
+  expiresAt ? Math.max(0, Math.round((new Date(expiresAt).getTime() - Date.now()) / 1000)) : 0;
+
+const RecordComponent: React.FC<PageProps> = ({ config, refresh, notify }) => {
+  const { busy, run } = useBusy(notify);
+  const [roomId, setRoomId] = useState(config.rooms[0]?.id ?? '');
+  const [recording, setRecording] = useState<RecordingState | null>(null);
+  const [remaining, setRemaining] = useState(0);
+  const [capture, setCapture] = useState<Capture | null>(null);
+  const [name, setName] = useState('');
+
+  const room = config.rooms.find(r => r.id === roomId);
+  const detected = capture?.decoded.light_channel ?? null;
+  const mismatch = room && detected !== null && detected !== room.channel;
+
+  // Pick up a recording that is already running (e.g. started in another tab).
+  useEffect(() => {
+    api<RecordingState>('GET', '/record').then(s => s.active && setRecording(s)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!recording?.active) return;
+    const tick = () => {
+      const left = secondsLeft(recording.expires_at);
+      setRemaining(left);
+      if (left === 0) {
+        setRecording(null);
+        notify('Recording timed out', 'error');
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [recording, notify]);
+
+  const start = () => run('start', async () => {
+    setCapture(null);
+    setRecording(await api<RecordingState>('POST', '/record/start'));
+  });
+
+  const stop = () => run('stop', async () => {
     try {
-      await fetch('/api/commands/record/start', { method: 'POST' });
-      setRecordingStatus('recording');
-      setRecordingStep(1);
-      setRecordedData(null);
-    } catch (e) {
-      notify('Failed to start recording', 'error');
+      setCapture(await api<Capture>('POST', '/record/stop'));
+    } finally {
+      setRecording(null);
     }
-  };
+  });
 
-  const stopRecording = async () => {
+  const testSend = () => run('test', async () => {
+    if (!capture) return;
+    await api('POST', '/ir/send', { raw_data: capture.raw_data });
+    notify('Test signal sent');
+  });
+
+  const save = () => run('save', async () => {
+    if (!capture || !room || !name.trim()) return;
+    const body = { room_id: room.id, name: name.trim(), raw_data: capture.raw_data, allow_channel_mismatch: !!mismatch, replace: false };
     try {
-      await fetch('/api/commands/record/stop', { method: 'POST' });
-      setRecordingStatus('stopped');
-      setRecordingStep(2);
-      
-      setTimeout(async () => {
-        const res = await fetch('/api/commands/record/data');
-        const json = await res.json();
-        setRecordedData(json.data);
-        setRecordingStep(3);
-        notify('Data captured!');
-      }, 500);
+      await api('POST', '/commands', body);
     } catch (e) {
-      notify('Failed to stop recording', 'error');
+      if (!(e instanceof ApiError) || e.code !== 'exists') throw e;
+      if (!window.confirm(`${e.message}. Replace it? Timers using it will send the new code.`)) return;
+      await api('POST', '/commands', { ...body, replace: true });
     }
-  };
+    notify(`Saved ${name.trim()} for ${room.name}`);
+    setCapture(null);
+    setName('');
+    await refresh();
+  });
 
-  const saveCommand = async () => {
-    if (!newName || !recordedData) return;
-    const res = await fetch(`/api/commands?name=${encodeURIComponent(newName)}&raw_data=${encodeURIComponent(recordedData)}&channel=${newChannel}`, { method: 'POST' });
-    if (res.ok) {
-      notify('Command registered');
-      fetchConfig();
-      setNewName('');
-      setRecordedData(null);
-      setRecordingStep(0);
-      setRecordingStatus('idle');
-      setNewChannel(1);
-    }
-  };
+  if (config.rooms.length === 0) {
+    return <p className="glass-panel rounded-2xl p-10 text-center text-gray-500 text-sm">Add a room in the Rooms tab before recording.</p>;
+  }
+
+  const isRecording = !!recording?.active;
 
   return (
-    <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold tracking-tight text-gray-900">Record IR Command</h2>
-      </div>
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold tracking-tight text-gray-900">Record IR Command</h2>
 
-      <div className="glass-panel rounded-2xl p-6 sm:p-8">
-        <div className="space-y-8 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-px before:bg-gray-200">
-          
-          {/* Step 1 */}
-          <div className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-            <div className={`flex items-center justify-center w-10 h-10 rounded-full shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm z-10 font-bold transition-colors bg-white border-2 ${recordingStep >= 1 ? 'border-blue-500 text-blue-600' : 'border-gray-300 text-gray-400'}`}>
-              1
-            </div>
-            <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-2xl bg-gray-50 border border-gray-200">
-              <button 
-                onClick={startRecording} 
-                disabled={recordingStatus === 'recording'}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors focus:ring-2 focus:ring-blue-500/50"
+      <div className="glass-panel rounded-2xl p-6 sm:p-8 space-y-6">
+        <div>
+          <label className="text-xs font-semibold text-gray-600 mb-1.5 block">1. Room</label>
+          <div className="flex flex-wrap gap-2">
+            {config.rooms.map(r => (
+              <button
+                key={r.id}
+                onClick={() => setRoomId(r.id)}
+                className={`px-3 py-2 rounded-lg font-medium text-sm border transition-colors ${
+                  r.id === roomId ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
               >
-                Start Recording
+                {r.name} <span className={`ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded border ${channelStyle(r.channel)}`}>CH{r.channel}</span>
               </button>
-              
-              {recordingStatus === 'recording' && (
-                <div className="mt-4 flex items-center space-x-3 bg-red-50 p-3 rounded-xl border border-red-100">
-                  <div className="relative flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-                  </div>
-                  <span className="text-red-600 font-medium text-xs">Press button on remote...</span>
-                </div>
-              )}
-            </div>
+            ))}
           </div>
-
-          {/* Step 2 */}
-          <div className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-            <div className={`flex items-center justify-center w-10 h-10 rounded-full shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm z-10 font-bold transition-colors bg-white border-2 ${recordingStep >= 2 ? 'border-blue-500 text-blue-600' : 'border-gray-300 text-gray-400'}`}>
-               2
-            </div>
-            <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-2xl bg-gray-50 border border-gray-200">
-              <button 
-                onClick={stopRecording} 
-                disabled={recordingStatus !== 'recording'}
-                className="w-full bg-white hover:bg-gray-100 border border-gray-300 text-gray-700 px-4 py-2.5 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors focus:ring-2 focus:ring-gray-500/50"
-              >
-                Stop Recording
-              </button>
-            </div>
-          </div>
-
-          {/* Step 3 */}
-          <div className={`relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active transition-opacity ${!recordedData ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-            <div className={`flex items-center justify-center w-10 h-10 rounded-full shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm z-10 font-bold transition-colors bg-white border-2 ${recordingStep >= 3 ? 'border-green-500 text-green-600' : 'border-gray-300 text-gray-400'}`}>
-              3
-            </div>
-            <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-5 rounded-2xl bg-gray-50 border border-gray-200 shadow-sm">
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-semibold text-gray-600 mb-1.5 block">Command Name</label>
-                  <input 
-                    type="text" 
-                    value={newName} 
-                    onChange={e => setNewName(e.target.value)} 
-                    placeholder="e.g. TV_POWER" 
-                    className="w-full bg-white border border-gray-300 text-gray-900 px-3 py-2 rounded-lg focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-colors outline-none" 
-                  />
-                </div>
-                <div>
-                  <div className="flex justify-between items-end mb-1.5">
-                    <label className="text-xs font-semibold text-gray-600">Target Channel</label>
-                    <span className="text-[10px] text-gray-500">{config.mappings[newChannel] ? `Mapped: ${config.mappings[newChannel]}` : 'Unmapped'}</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[1, 2, 3].map(ch => (
-                      <button 
-                        key={ch} 
-                        onClick={() => setNewChannel(ch)} 
-                        className={`py-2 rounded-lg font-medium text-sm transition-colors border ${
-                          newChannel === ch 
-                            ? 'bg-blue-50 border-blue-200 text-blue-700' 
-                            : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                        }`}
-                      >
-                        CH{ch}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <button 
-                  onClick={saveCommand} 
-                  className="w-full mt-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-xl font-medium shadow-sm transition-colors focus:ring-2 focus:ring-green-500/50"
-                >
-                  Save Command
-                </button>
-              </div>
-            </div>
-          </div>
-
+          {room && <p className="text-xs text-gray-500 mt-2">Set the remote to CH{room.channel} before pressing the button.</p>}
         </div>
+
+        <div>
+          <label className="text-xs font-semibold text-gray-600 mb-1.5 block">2. Capture</label>
+          {!isRecording ? (
+            <button onClick={start} disabled={busy !== null} className={`${primaryButton} w-full`}>
+              {busy === 'start' ? 'Starting…' : capture ? 'Record again' : 'Start Recording'}
+            </button>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center space-x-3 bg-red-50 p-3 rounded-xl border border-red-100">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                </span>
+                <span className="text-red-600 font-medium text-sm">Point the remote at the receiver and press the button once… ({remaining}s)</span>
+              </div>
+              <button onClick={stop} disabled={busy !== null} className={`${secondaryButton} w-full`}>
+                {busy === 'stop' ? 'Reading…' : 'Stop & Read'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {capture && room && (
+          <div className="space-y-4 border-t border-gray-100 pt-6">
+            <label className="text-xs font-semibold text-gray-600 block">3. Check and save</label>
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm space-y-1">
+              {capture.decoded.frames.length > 0 ? (
+                <div>Decoded: <span className="font-mono">{capture.decoded.frames.join(' / ')}</span></div>
+              ) : (
+                <div className="text-gray-500">Unknown format ({capture.raw_data.split(',').length} bytes); it can still be sent as recorded.</div>
+              )}
+              {detected !== null && <div>Code is for <strong>CH{detected}</strong></div>}
+            </div>
+            {mismatch && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 text-sm">
+                This code is for CH{detected}, but {room.name} is on CH{room.channel}. Was the remote set to the wrong channel?
+                Saving anyway will control whichever light listens on CH{detected}.
+              </div>
+            )}
+            {capture.same_as_previous && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 text-sm">
+                This is identical to the previous capture. If you pressed a different button, it may not have been received; record again.
+              </div>
+            )}
+            <button onClick={testSend} disabled={busy !== null} className={`${secondaryButton} w-full`}>
+              {busy === 'test' ? 'Sending…' : 'Test: send this signal'}
+            </button>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1.5 block">Button name</label>
+              <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. DARKEN" className={inputClass} maxLength={60} />
+            </div>
+            <button onClick={save} disabled={busy !== null || !name.trim()} className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-xl font-medium shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              {busy === 'save' ? 'Saving…' : `Save to ${room.name}`}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

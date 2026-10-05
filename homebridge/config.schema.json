@@ -1,0 +1,43 @@
+{
+  "pluginAlias": "IrRemoteHub",
+  "pluginType": "platform",
+  "singular": true,
+  "headerDisplay": "Rooms and routines are read from the IR Remote Hub; set them up in its web UI. Install homebridge-alexa and/or homebridge-gsh to use them from Alexa or Google Home.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "default": "IR Remote Hub",
+        "required": true
+      },
+      "url": {
+        "title": "Hub URL",
+        "type": "string",
+        "placeholder": "http://192.168.1.10:8000",
+        "required": true,
+        "description": "Address of the IR Remote Hub web app."
+      },
+      "routines": {
+        "title": "Show routines as switches",
+        "type": "boolean",
+        "default": true,
+        "description": "Each routine becomes a switch that runs it and turns itself back off."
+      },
+      "pollInterval": {
+        "title": "Refresh interval (seconds)",
+        "type": "integer",
+        "default": 10,
+        "minimum": 2,
+        "description": "How often to pick up room/routine changes and the lights' current state."
+      },
+      "timeout": {
+        "title": "Request timeout (seconds)",
+        "type": "integer",
+        "default": 5,
+        "minimum": 1
+      }
+    }
+  }
+}

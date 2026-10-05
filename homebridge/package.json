@@ -1,0 +1,32 @@
+{
+  "name": "homebridge-ir-remote-hub",
+  "displayName": "IR Remote Hub",
+  "version": "0.1.0",
+  "description": "Exposes the rooms and routines of an IR Remote Hub (bto_ir_advanced_cmd web app) to HomeKit, and through homebridge-alexa / homebridge-gsh to Alexa and Google Home.",
+  "main": "index.js",
+  "license": "MIT",
+  "keywords": [
+    "homebridge-plugin",
+    "infrared",
+    "ir",
+    "bto"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ompugao/bto_ir_advanced_cmd.git",
+    "directory": "homebridge"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "homebridge": "^1.6.0 || ^2.0.0-beta.0"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "config.schema.json",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

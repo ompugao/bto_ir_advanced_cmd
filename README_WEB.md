@@ -11,6 +11,9 @@ A containerized web server to control the Bit Trade One Advanced USB IR Remote C
   the capture is decoded, its function (e.g. "Darker") and channel are recognised, and it can be test-sent before saving.
 - **Channel conversion**: for supported lights (Panasonic ceiling lights, maker code `2C 52`), buttons can be copied
   from another room and converted to this room's channel, so each button only has to be recorded once.
+- **HomeKit / Alexa / Google Home**: the Homebridge plugin in [`homebridge/`](homebridge/README.md) turns each room into a
+  dimmable light and each routine into a switch. The hub keeps an estimate of each light's state, so the web UI,
+  routines and voice assistants all stay in step.
 - Works on phones and desktops; follows the system's light/dark setting.
 
 ## About channels

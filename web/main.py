@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, ValidationError
 from web import ir_codec
 from web.device import device_connected
 from web.ir_controller import IRController
+from web.lights import AXES, LightTracker, to_percent
 from web.models import (TIME_PATTERN, Command, Config, Name, Role, Room, Timer, TimerStep, equivalent_command,
                         migrate)
 from web.recording import NoRecording, RecordingSession
@@ -53,10 +54,19 @@ def default_config_path() -> str:
 class RoomIn(BaseModel):
     name: Name
     channel: int = Field(ge=1, le=3)
+    # Omitted: keep the current value (or the default for a new room).
+    brightness_steps: Optional[int] = Field(default=None, ge=1, le=50)
+    color_steps: Optional[int] = Field(default=None, ge=1, le=50)
 
 
 class NewRoomIn(RoomIn):
     copy_from_room_id: Optional[str] = None
+
+
+class LightIn(BaseModel):
+    on: Optional[bool] = None
+    brightness: Optional[int] = Field(default=None, ge=0, le=100)  # percent
+    color: Optional[int] = Field(default=None, ge=0, le=100)  # percent, 0 = warmest, 100 = whitest
 
 
 class CommandIn(BaseModel):
@@ -126,10 +136,12 @@ def _derive_into(config: Config, source: Command, room: Room) -> Command:
 
 def create_app(config_path: Optional[str] = None, controller: Optional[IRController] = None,
                run_scheduler: bool = True, record_timeout: float = 30) -> FastAPI:
-    store = ConfigStore(config_path or default_config_path(), migrate=migrate)
+    config_path = config_path or default_config_path()
+    store = ConfigStore(config_path, migrate=migrate)
     controller = controller or IRController()
     now = lambda: datetime.now(TZ)  # noqa: E731
-    runner = IRRunner(controller, store, now=now)
+    lights = LightTracker(os.path.join(os.path.dirname(os.path.abspath(config_path)), "lights.json"))
+    runner = IRRunner(controller, store, now=now, lights=lights)
     scheduler = TimerScheduler(store, runner, TZ)
     recording = RecordingSession(runner, now=now, timeout=record_timeout)
 
@@ -185,7 +197,7 @@ def create_app(config_path: Optional[str] = None, controller: Optional[IRControl
     def add_room(body: NewRoomIn):
         skipped = []
         with store.transaction() as config:
-            room = Room(name=body.name, channel=body.channel)
+            room = Room(**body.model_dump(exclude={"copy_from_room_id"}, exclude_none=True))
             config.rooms.append(room)
             if body.copy_from_room_id:
                 if not config.room(body.copy_from_room_id):
@@ -230,7 +242,14 @@ def create_app(config_path: Optional[str] = None, controller: Optional[IRControl
                         cmd.raw_data = ir_codec.derive_raw(cmd.raw_data, body.channel)
                     except ir_codec.NotDerivable:
                         not_rewritten.append(cmd.name)
+            steps_changed = any(
+                v is not None and v != getattr(room, k)
+                for k, v in (("brightness_steps", body.brightness_steps), ("color_steps", body.color_steps)))
             room.name, room.channel = body.name, body.channel
+            room.brightness_steps = body.brightness_steps or room.brightness_steps
+            room.color_steps = body.color_steps or room.color_steps
+        if steps_changed:
+            lights.reset(room_id)
         return {"room": room, "not_rewritten": not_rewritten}
 
     @app.delete("/api/rooms/{room_id}")
@@ -242,7 +261,49 @@ def create_app(config_path: Optional[str] = None, controller: Optional[IRControl
             if count:
                 raise _conflict(f"Room still has {count} command(s); delete them first")
             config.rooms = [r for r in config.rooms if r.id != room_id]
+        lights.reset(room_id)
         return {"status": "room deleted"}
+
+    # --- Lights (estimated state; used by the Homebridge plugin) ---
+
+    def light_view(config: Config, room: Room) -> dict:
+        roles = {c.role for c in config.commands if c.room_id == room.id and c.role}
+        s = lights.get(room.id)
+        return {
+            "room_id": room.id,
+            "name": room.name,
+            "on": s.on,
+            "brightness": to_percent(s.brightness, room.brightness_steps),
+            "color": to_percent(s.color, room.color_steps),
+            # What this room's buttons let you control.
+            "supports": {
+                "power": {"on", "off"} <= roles,
+                **{axis: {up, down} <= roles for axis, (up, down) in AXES.items()},
+            },
+        }
+
+    @app.get("/api/lights")
+    def get_lights():
+        config = store.read()
+        return [light_view(config, r) for r in config.rooms]
+
+    @app.put("/api/rooms/{room_id}/light", status_code=202)
+    def set_light(room_id: str, body: LightIn):
+        """Turn a light on/off or set its brightness / colour. Returns at once; the
+        presses are queued with everything else that uses the device."""
+        config = store.read()
+        room = config.room(room_id)
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found")
+        view = light_view(config, room)
+        wanted = body.model_dump(exclude_none=True)
+        if not wanted:
+            raise HTTPException(status_code=422, detail="Nothing to change")
+        missing = [k for k in wanted if not view["supports"]["power" if k == "on" else k]]
+        if missing:
+            raise HTTPException(status_code=422, detail=f"{room.name} has no buttons for: {', '.join(missing)}")
+        runner.set_light(room_id, **wanted)
+        return view
 
     # --- Commands ---
 
@@ -300,10 +361,14 @@ def create_app(config_path: Optional[str] = None, controller: Optional[IRControl
 
     @app.post("/api/commands/{command_id}/send")
     def send_command(command_id: str):
-        cmd = store.read().command(command_id)
-        if not cmd:
+        if not store.read().command(command_id):
             raise HTTPException(status_code=404, detail="Command not found")
-        ir_call(controller.send_raw_data, cmd.raw_data)
+        try:
+            runner.send_command(command_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Command not found")
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=str(e))
         return {"status": "sent"}
 
     @app.post("/api/commands/{command_id}/derive", status_code=201)

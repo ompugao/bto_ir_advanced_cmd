@@ -23,6 +23,10 @@ class Room(BaseModel):
     id: str = Field(default_factory=new_id)
     name: Name
     channel: int = Field(ge=1, le=3)
+    # Brighter/Darker (White/Warmer) presses from one end of the range to the other.
+    # Used to track and set brightness and colour from HomeKit / Alexa / Google.
+    brightness_steps: int = Field(default=10, ge=1, le=50)
+    color_steps: int = Field(default=10, ge=1, le=50)
 
 
 class Command(BaseModel):

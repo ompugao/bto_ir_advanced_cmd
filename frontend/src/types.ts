@@ -2,6 +2,8 @@ export interface Room {
   id: string;
   name: string;
   channel: number;
+  brightness_steps: number;
+  color_steps: number;
 }
 
 export type Role = 'on' | 'off' | 'brighter' | 'darker' | 'white' | 'warmer';

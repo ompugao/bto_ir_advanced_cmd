@@ -20,6 +20,7 @@ It offers:
 - **Home**: a remote per room;
 - **Routines**: daily sequences at a fixed time, Asia/Tokyo;
 - **Settings**: rooms, buttons, recording.
+- **HomeKit / Alexa / Google Home**: through the Homebridge plugin in `homebridge/`.
 
 ## IR protocol findings
 
@@ -56,10 +57,11 @@ All captures are **AEHA** frames: a leader pulse, 40 pulse-distance bits sent LS
 
 ```
 browser (React SPA)  ──HTTP──>  FastAPI (web/main.py)
-                                 ├─ ConfigStore   data/config.json (atomic writes)
-                                 ├─ TimerScheduler APScheduler cron jobs (Asia/Tokyo)
-                                 ├─ IRRunner       single worker thread ──> bto_advanced_USBIR_cmd ──> USB
-                                 └─ RecordingSession (auto-stop after 30 s)
+Homebridge plugin    ──HTTP──>   ├─ ConfigStore   data/config.json (atomic writes)
+ (homebridge/)                   ├─ TimerScheduler APScheduler cron jobs (Asia/Tokyo)
+  ├─ HomeKit                     ├─ IRRunner       single worker thread ──> bto_advanced_USBIR_cmd ──> USB
+  ├─ homebridge-alexa            ├─ LightTracker   estimated light state, data/lights.json
+  └─ homebridge-gsh              └─ RecordingSession (auto-stop after 30 s)
 ```
 
 ### Backend modules (`web/`)
@@ -69,7 +71,8 @@ browser (React SPA)  ──HTTP──>  FastAPI (web/main.py)
 | `main.py` | `create_app()` wires everything together; `app_factory()` is the uvicorn entry point (`--factory`). Also holds the API routes. |
 | `store.py` | In-memory config behind a lock. Writes use temp file + fsync + rename and keep `config.json.bak`. An unreadable config **stops startup**; it is never replaced with an empty one. |
 | `models.py` | Config schema (v3), cross-reference validation, the v1 → v2 → v3 migration chain, and `equivalent_command()`. |
-| `runner.py` | One worker thread for all device access, so sequences never interleave. Records each timer's last run result. |
+| `runner.py` | One worker thread for all device access, so sequences never interleave. Records each timer's last run result. Every stored button goes through `_press`, which updates the light estimate. Light changes (`set_light`) are merged while queued. |
+| `lights.py` | Estimated on/brightness/colour per room, counted from the role buttons sent, and `plan()` to reach a target level (see below). |
 | `scheduler.py` | One cron job per enabled timer. 300 s misfire grace (APScheduler's default is 1 s). Jobs are synced incrementally. |
 | `recording.py` | Recording state on the server, with a timeout. Flags a capture that is identical to the previous one. |
 | `ir_codec.py` | Decoding, channel rewriting, and function detection (see above). |
@@ -77,7 +80,9 @@ browser (React SPA)  ──HTTP──>  FastAPI (web/main.py)
 
 ### Data model (config v3)
 
-- **Rooms:** `rooms[{id, name, channel}]`.
+- **Rooms:** `rooms[{id, name, channel, brightness_steps, color_steps}]`.
+  - The step counts (default 10) are the presses from one end of the range to the other. They were added without a version
+    bump, because older v3 files simply get the defaults.
 - **Commands:** `commands[{id, room_id, name, raw_data, derived, role}]`.
   - `role` is one of `on|off|brighter|darker|white|warmer`, or `null`, with at most one per room.
   - `derived` marks a button generated from another room's capture.
@@ -95,6 +100,33 @@ browser (React SPA)  ──HTTP──>  FastAPI (web/main.py)
   and a top bar on desktop, and the app follows the system dark/light setting.
 - **Hold to repeat:** holding Brighter/Darker/White/Warmer on Home keeps sending, with a 400 ms delay before
   repeating and 100 ms gaps after that.
+
+## HomeKit, Alexa and Google Home
+
+The Homebridge plugin in `homebridge/` is a thin client of the hub's HTTP API:
+- **Rooms** with On/Off buttons become Lightbulbs, with Brightness / Color Temperature when the room has
+  Brighter+Darker / White+Warmer.
+- **Routines** become push-button Switches.
+- Alexa and Google Home reach them through `homebridge-alexa` / `homebridge-gsh`.
+
+**Why the plugin doesn't call the binary itself:**
+- The hub's single worker thread is what keeps sends from interleaving. A second process on the same device would bring
+  that problem back.
+- The hub already knows the rooms, buttons and routines; the plugin would otherwise need its own copy.
+
+**Light state:**
+- IR is one-way, so `LightTracker` estimates each light's state from every role button sent, whoever sent it.
+- Levels are counted in presses, from 0 to `steps`; `None` means unknown.
+- `plan()` moves by the difference. Moving to an end, or from an unknown level, presses `steps` extra times. Extra
+  presses past the end do nothing on the light, so the estimate becomes exact again.
+- A routine step with at least `steps` repeats of one button re-syncs the same way.
+- The estimate is saved to `data/lights.json`. Losing the file only makes the levels unknown.
+
+**API:**
+- `GET /api/lights` returns, per room: `on`, `brightness` and `color` (percent or null), plus `supports`.
+- `PUT /api/rooms/{id}/light {on?, brightness?, color?}` replies 202 straight away.
+  - The presses are queued, and targets that arrive while queued are merged.
+  - Turning a light off ignores any brightness or colour sent in the same request.
 
 ## Defects fixed
 
@@ -133,14 +165,17 @@ These were found in the original web app (`80f1626`) and fixed on `feat/webapp`.
 
 ## Tests
 
-`.venv/bin/python -m pytest web/tests` runs 65 tests with a fake controller, so no device is needed. They cover:
+`.venv/bin/python -m pytest web/tests` runs 72 tests with a fake controller, so no device is needed. They cover:
 - the store (crash safety, concurrency, rejection of invalid edits);
 - the runner and scheduler;
 - the codec against all real samples;
 - migrations of the real v1 and v2 NAS configs (fixtures);
-- the API.
+- the API;
+- light tracking: planning, merging of queued changes, and estimates from buttons and routines.
 
 Frontend: `cd frontend && npx eslint src && npm run build`.
+
+Homebridge plugin: `cd homebridge && npm test`.
 
 For manual UI testing without hardware, run the server against a stand-in binary:
 - set `IR_HUB_BINARY` to a script that logs its arguments and prints a saved capture for `-g`;
@@ -166,6 +201,10 @@ Notes:
 - `web/config.json` and `~/3rdparty/bto_ir_advanced_cmd.bak-20260926` — the original v1 config and code.
 
 ## Open points
+
+- The default 10 brightness / colour steps are a guess. Count the presses from dimmest to brightest on the real lights
+  and set them per room.
+- The Homebridge plugin was tested against Homebridge 2.4 over HAP, but not yet with homebridge-alexa / homebridge-gsh.
 
 - Generated On/Brighter codes for CH2/CH3 have not been confirmed on the real lights yet.
 - Light mode, and the routine editor at phone width, were not checked visually during development.

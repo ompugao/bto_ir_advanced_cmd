@@ -3,14 +3,19 @@ import type { Command, PageProps, Role, Room } from '../../types';
 import { api } from '../../api';
 import { ROLES, ROLE_LABEL, card, heading, inputClass, label, muted, primaryButton, roomCommands, secondaryButton, useBusy, warningBox, roleIcon } from '../../ui';
 import Icon from '../ui/Icon';
-import { ChannelBadge, Chip } from '../ui/Controls';
+import { ChannelBadge, Chip, Stepper } from '../ui/Controls';
 import RecordSheet from './RecordSheet';
 
-const RoomForm: React.FC<{ room: Room; buttonCount: number; others: Room[]; busy: boolean; onSave: (name: string, channel: number) => void }> =
-  ({ room, buttonCount, others, busy, onSave }) => {
+type RoomEdit = Pick<Room, 'name' | 'channel' | 'brightness_steps' | 'color_steps'>;
+
+const RoomForm: React.FC<{ room: Room; buttonCount: number; others: Room[]; hasSteps: { brightness: boolean; color: boolean }; busy: boolean; onSave: (edit: RoomEdit) => void }> =
+  ({ room, buttonCount, others, hasSteps, busy, onSave }) => {
     const [name, setName] = useState(room.name);
     const [channel, setChannel] = useState(room.channel);
-    const dirty = name.trim() !== room.name || channel !== room.channel;
+    const [brightnessSteps, setBrightnessSteps] = useState(room.brightness_steps);
+    const [colorSteps, setColorSteps] = useState(room.color_steps);
+    const dirty = name.trim() !== room.name || channel !== room.channel
+      || brightnessSteps !== room.brightness_steps || colorSteps !== room.color_steps;
     const sharing = others.filter(r => r.channel === channel);
     return (
       <section className={`${card} p-4 space-y-3`}>
@@ -30,8 +35,27 @@ const RoomForm: React.FC<{ room: Room; buttonCount: number; others: Room[]; busy
         {sharing.length > 0 && (
           <div className={warningBox}>{sharing.map(r => r.name).join(', ')} also use CH{channel}; lights on the same channel react to each other's buttons.</div>
         )}
+        {(hasSteps.brightness || hasSteps.color) && (
+          <div className="space-y-2">
+            <p className={`text-xs ${muted}`}>
+              Presses from one end of the range to the other. Used when HomeKit, Alexa or Google set a brightness or colour.
+            </p>
+            {hasSteps.brightness && (
+              <div className="flex items-center justify-between gap-3">
+                <span className={`text-sm ${heading}`}>Brightness steps</span>
+                <Stepper value={brightnessSteps} min={1} max={50} onChange={setBrightnessSteps} />
+              </div>
+            )}
+            {hasSteps.color && (
+              <div className="flex items-center justify-between gap-3">
+                <span className={`text-sm ${heading}`}>Colour steps</span>
+                <Stepper value={colorSteps} min={1} max={50} onChange={setColorSteps} />
+              </div>
+            )}
+          </div>
+        )}
         {dirty && (
-          <button onClick={() => onSave(name.trim(), channel)} disabled={busy || !name.trim()} className={`${primaryButton} w-full`}>Save room</button>
+          <button onClick={() => onSave({ name: name.trim(), channel, brightness_steps: brightnessSteps, color_steps: colorSteps })} disabled={busy || !name.trim()} className={`${primaryButton} w-full`}>Save room</button>
         )}
       </section>
     );
@@ -93,9 +117,15 @@ const RoomDetail: React.FC<PageProps & { room: Room }> = ({ config, room, refres
   const buttons = roomCommands(config, room.id);
   const others = config.rooms.filter(r => r.id !== room.id);
 
-  const saveRoom = (name: string, channel: number) => run('room', async () => {
-    const res = await api<{ not_rewritten: string[] }>('PUT', `/rooms/${room.id}`, { name, channel });
-    if (res.not_rewritten.length) notify(`Saved. Record these again for CH${channel}: ${res.not_rewritten.join(', ')}`, 'error');
+  const roles = new Set(buttons.map(b => b.role));
+  const hasSteps = {
+    brightness: roles.has('brighter') && roles.has('darker'),
+    color: roles.has('white') && roles.has('warmer'),
+  };
+
+  const saveRoom = (edit: RoomEdit) => run('room', async () => {
+    const res = await api<{ not_rewritten: string[] }>('PUT', `/rooms/${room.id}`, edit);
+    if (res.not_rewritten.length) notify(`Saved. Record these again for CH${edit.channel}: ${res.not_rewritten.join(', ')}`, 'error');
     else notify('Room saved');
     await refresh();
   });
@@ -149,7 +179,8 @@ const RoomDetail: React.FC<PageProps & { room: Room }> = ({ config, room, refres
         <ChannelBadge channel={room.channel} />
       </div>
 
-      <RoomForm key={`${room.name}:${room.channel}`} room={room} buttonCount={buttons.length} others={others} busy={busy !== null} onSave={saveRoom} />
+      <RoomForm key={`${room.name}:${room.channel}:${room.brightness_steps}:${room.color_steps}`} room={room} buttonCount={buttons.length} others={others}
+                hasSteps={hasSteps} busy={busy !== null} onSave={saveRoom} />
 
       <section className={`${card} p-4`}>
         <div className="flex items-center justify-between">

@@ -1,0 +1,38 @@
+{
+  "platform": "BtoIR",
+  "name": "BTO IR",
+  "command": "bto_advanced_USBIR_cmd",
+  "signalDir": "bto-ir",
+  "signals": [
+    { "name": "darker",   "file": "darker.txt" },
+    { "name": "brighter", "file": "brighter.txt" },
+    { "name": "orange",   "file": "orange.txt" },
+    { "name": "whiter",   "file": "whiter.txt" }
+  ],
+  "accessories": [
+    {
+      "name": "Dim Living Room",
+      "type": "switch",
+      "on": [
+        { "signal": "darker", "repeat": 6, "interval": 100 },
+        { "signal": "orange", "repeat": 5, "interval": 100 }
+      ]
+    },
+    {
+      "name": "Darken Living Room",
+      "type": "switch",
+      "on": [
+        { "signal": "darker", "repeat": 20, "interval": 100 },
+        { "signal": "orange", "repeat": 20, "interval": 100 }
+      ]
+    },
+    {
+      "name": "Living Room Light",
+      "type": "lightbulb",
+      "brighter": "brighter",
+      "darker": "darker",
+      "levels": 20,
+      "interval": 100
+    }
+  ]
+}

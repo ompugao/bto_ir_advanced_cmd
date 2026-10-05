@@ -1,0 +1,33 @@
+{
+  "name": "homebridge-bto-ir",
+  "displayName": "BTO USB IR Remote Advance",
+  "version": "0.1.0",
+  "description": "Homebridge plugin that sends IR signals through bto_advanced_USBIR_cmd (Bit Trade One USB IR Remote Controller Advance), so they can be triggered from HomeKit, Alexa (homebridge-alexa) and Google Home (homebridge-gsh).",
+  "main": "index.js",
+  "license": "MIT",
+  "keywords": [
+    "homebridge-plugin",
+    "infrared",
+    "ir",
+    "bto",
+    "usb-ir"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ompugao/bto_ir_advanced_cmd.git",
+    "directory": "homebridge"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "homebridge": "^1.6.0 || ^2.0.0-beta.0"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "config.schema.json",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

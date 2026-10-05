@@ -3,6 +3,13 @@
 * このリポジトリは、ビット・トレード・ワン USB赤外線リモコンアドバンスのUNIX系環境用コマンドライン操作ツール&GUI操作ツール Ver 1.0.0を配置しただけのものであり、リポジトリ作成者はソースコード開発者ではありません。
 * git clone可能な場所に当システムを配置する必要があったため作成したリポジトリです。
 
+# Homebridge / Alexa / Google Home 対応
+
+`homebridge/` ディレクトリに Homebridge プラグイン (homebridge-bto-ir) を同梱しています。
+記録した赤外線信号を HomeKit のスイッチ／照明として公開し、homebridge-alexa や
+homebridge-gsh と組み合わせることで Alexa・Google Home からも操作できます。
+セットアップ方法は homebridge/README.md を参照してください。
+
 # オリジナルのREADME
 
 bto_advanced_USBIR_cmd

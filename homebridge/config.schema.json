@@ -1,0 +1,244 @@
+{
+  "pluginAlias": "BtoIR",
+  "pluginType": "platform",
+  "singular": true,
+  "headerDisplay": "Send IR signals with the Bit Trade One USB IR Remote Controller Advance. Accessories show up in HomeKit; install homebridge-alexa and/or homebridge-gsh to control them from Alexa / Google Home.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Platform name",
+        "type": "string",
+        "default": "BTO IR",
+        "required": true
+      },
+      "command": {
+        "title": "bto_advanced_USBIR_cmd path",
+        "type": "string",
+        "default": "bto_advanced_USBIR_cmd",
+        "description": "Name or absolute path of the command-line tool."
+      },
+      "commandPrefix": {
+        "title": "Command prefix",
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Optional. Run the tool through another program, one argument per item, e.g. docker, run, --rm, --privileged, ompugao/bto_ir_advanced_cmd"
+      },
+      "signalDir": {
+        "title": "Signal directory",
+        "type": "string",
+        "description": "Directory for relative signal file paths. Relative to the Homebridge storage directory (e.g. ~/.homebridge). Default: the storage directory itself."
+      },
+      "timeout": {
+        "title": "Command timeout (ms)",
+        "type": "integer",
+        "default": 10000
+      },
+      "retries": {
+        "title": "Retries on failure",
+        "type": "integer",
+        "default": 1,
+        "minimum": 0
+      },
+      "dryRun": {
+        "title": "Dry run (log commands instead of sending)",
+        "type": "boolean",
+        "default": false
+      },
+      "signals": {
+        "title": "Signals",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "title": "Name",
+              "type": "string",
+              "required": true
+            },
+            "file": {
+              "title": "Raw data file",
+              "type": "string",
+              "description": "File saved with `bto_advanced_USBIR_cmd -g`, e.g. darker.txt"
+            },
+            "data": {
+              "title": "Raw data",
+              "type": "string",
+              "description": "Inline raw data, 0x00,0x85,..."
+            },
+            "frequency": {
+              "title": "Carrier frequency (Hz)",
+              "type": "integer",
+              "description": "Raw data only. Default 38000."
+            },
+            "format": {
+              "title": "Format",
+              "type": "string",
+              "oneOf": [
+                {
+                  "title": "AEHA",
+                  "enum": [
+                    "AEHA"
+                  ]
+                },
+                {
+                  "title": "NEC",
+                  "enum": [
+                    "NEC"
+                  ]
+                },
+                {
+                  "title": "SONY",
+                  "enum": [
+                    "SONY"
+                  ]
+                },
+                {
+                  "title": "MITSUBISHI",
+                  "enum": [
+                    "MITSUBISHI"
+                  ]
+                }
+              ]
+            },
+            "code": {
+              "title": "Code (hex)",
+              "type": "string",
+              "description": "With format, e.g. 08F6817E"
+            }
+          }
+        }
+      },
+      "accessories": {
+        "title": "Accessories",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "title": "Name (what you say to Siri / Alexa / Google)",
+              "type": "string",
+              "required": true
+            },
+            "type": {
+              "title": "Type",
+              "type": "string",
+              "default": "switch",
+              "oneOf": [
+                {
+                  "title": "Switch",
+                  "enum": [
+                    "switch"
+                  ]
+                },
+                {
+                  "title": "Lightbulb",
+                  "enum": [
+                    "lightbulb"
+                  ]
+                }
+              ]
+            },
+            "on": {
+              "title": "Steps when turned on",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "signal": {
+                    "title": "Signal",
+                    "type": "string"
+                  },
+                  "repeat": {
+                    "title": "Repeat",
+                    "type": "integer",
+                    "default": 1,
+                    "minimum": 1
+                  },
+                  "interval": {
+                    "title": "Delay between repeats (ms)",
+                    "type": "integer",
+                    "default": 100
+                  },
+                  "delay": {
+                    "title": "Wait (ms) — use instead of a signal",
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "off": {
+              "title": "Steps when turned off",
+              "description": "Switch: leave empty for a push button that resets itself.",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "signal": {
+                    "title": "Signal",
+                    "type": "string"
+                  },
+                  "repeat": {
+                    "title": "Repeat",
+                    "type": "integer",
+                    "default": 1,
+                    "minimum": 1
+                  },
+                  "interval": {
+                    "title": "Delay between repeats (ms)",
+                    "type": "integer",
+                    "default": 100
+                  },
+                  "delay": {
+                    "title": "Wait (ms) — use instead of a signal",
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "resetAfter": {
+              "title": "Push button reset (ms)",
+              "type": "integer",
+              "default": 1000,
+              "condition": {
+                "functionBody": "return model.accessories[arrayIndices].type !== 'lightbulb';"
+              }
+            },
+            "brighter": {
+              "title": "Brighter signal",
+              "type": "string",
+              "condition": {
+                "functionBody": "return model.accessories[arrayIndices].type === 'lightbulb';"
+              }
+            },
+            "darker": {
+              "title": "Darker signal",
+              "type": "string",
+              "condition": {
+                "functionBody": "return model.accessories[arrayIndices].type === 'lightbulb';"
+              }
+            },
+            "levels": {
+              "title": "Number of button presses from dimmest to brightest",
+              "type": "integer",
+              "default": 10,
+              "condition": {
+                "functionBody": "return model.accessories[arrayIndices].type === 'lightbulb';"
+              }
+            },
+            "interval": {
+              "title": "Delay between brightness presses (ms)",
+              "type": "integer",
+              "default": 150,
+              "condition": {
+                "functionBody": "return model.accessories[arrayIndices].type === 'lightbulb';"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
